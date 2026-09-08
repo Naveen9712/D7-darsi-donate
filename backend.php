@@ -381,16 +381,22 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 /**
  * Admin-only endpoints. Logged out gets 401, logged-in non-admin gets 403.
  */
-if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
-	function d7_ganesh_admin_permission() {
-		$config = d7_ganesh_config();
-		$provided_key = isset( $_SERVER['HTTP_X_D7_ADMIN_KEY'] )
-			? (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] )
-			: '';
+	if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
+		function d7_ganesh_admin_permission( $request = null ) {
+			$config = d7_ganesh_config();
+			$provided_key = '';
 
-		if ( ! empty( $config['admin_api_key'] ) && $provided_key && hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
-			return true;
-		}
+			if ( ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
+				$provided_key = (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] );
+			} elseif ( $request instanceof WP_REST_Request && $request->get_param( 'admin_key' ) ) {
+				$provided_key = (string) $request->get_param( 'admin_key' );
+			} elseif ( ! empty( $_GET['admin_key'] ) ) {
+				$provided_key = (string) wp_unslash( $_GET['admin_key'] );
+			}
+
+			if ( ! empty( $config['admin_api_key'] ) && '' !== $provided_key && hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
+				return true;
+			}
 
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error(
@@ -1072,56 +1078,75 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 
 /* =============================================================================
  * SECTION 4 — CORS
- *
- * Headers are added only for /d7-ganesh/v1 so the rest of WordPress REST
- * is left alone. Origins are compared without a trailing slash.
  * ========================================================================== */
 
-add_action( 'rest_api_init', function () {
+if ( ! function_exists( 'd7_ganesh_allowed_origins' ) ) {
+	function d7_ganesh_allowed_origins() {
+		$config = d7_ganesh_config();
+		$allowed = isset( $config['allowed_origins'] ) ? (array) $config['allowed_origins'] : array();
+		return array_values( array_filter( array_map( 'untrailingslashit', $allowed ) ) );
+	}
+}
 
-	$config  = d7_ganesh_config();
-	$allowed = isset( $config['allowed_origins'] ) ? (array) $config['allowed_origins'] : array();
-	$allowed = array_values( array_filter( array_map( 'untrailingslashit', $allowed ) ) );
+if ( ! function_exists( 'd7_ganesh_request_origin' ) ) {
+	function d7_ganesh_request_origin() {
+		$origin = get_http_origin();
+		$origin = $origin ? untrailingslashit( $origin ) : '';
+		return ( $origin && in_array( $origin, d7_ganesh_allowed_origins(), true ) ) ? $origin : '';
+	}
+}
 
-	if ( empty( $allowed ) ) {
+if ( ! function_exists( 'd7_ganesh_send_cors_headers' ) ) {
+	function d7_ganesh_send_cors_headers( $origin ) {
+		header( 'Access-Control-Allow-Origin: ' . $origin );
+		header( 'Access-Control-Allow-Credentials: true' );
+		header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
+		header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
+		header( 'Access-Control-Expose-Headers: X-WP-Total, X-WP-TotalPages' );
+		header( 'Access-Control-Max-Age: 600' );
+		header( 'Vary: Origin', false );
+	}
+}
+
+// Let WordPress core include the optional admin header in its preflight list.
+add_filter( 'rest_allowed_cors_headers', function ( $headers ) {
+	$headers[] = 'X-D7-Admin-Key';
+	return array_values( array_unique( $headers ) );
+} );
+
+// Answer our preflight before WordPress REST routing takes over.
+add_action( 'init', function () {
+	if ( ! isset( $_SERVER['REQUEST_METHOD'] ) || 'OPTIONS' !== $_SERVER['REQUEST_METHOD'] ) {
 		return;
 	}
 
-	add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) use ( $allowed ) {
-
-		$route = $request instanceof WP_REST_Request ? $request->get_route() : '';
-		if ( 0 !== strpos( $route, '/d7-ganesh/v1' ) ) {
-			return $served;
-		}
-
-		$origin = get_http_origin();
-		$origin = $origin ? untrailingslashit( $origin ) : '';
-
-		if ( $origin && in_array( $origin, $allowed, true ) ) {
-			header( 'Access-Control-Allow-Origin: ' . $origin );
-			header( 'Access-Control-Allow-Credentials: true' );
-			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
-			header( 'Vary: Origin' );
-		}
-
-		return $served;
-	}, 20, 3 );
-
 	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-	$is_ours = ( false !== strpos( $uri, '/d7-ganesh/v1' ) || false !== strpos( $uri, 'rest_route=/d7-ganesh' ) );
+	if ( false === strpos( $uri, 'd7-ganesh' ) ) {
+		return;
+	}
 
-	if ( $is_ours && isset( $_SERVER['REQUEST_METHOD'] ) && 'OPTIONS' === $_SERVER['REQUEST_METHOD'] ) {
-		$origin = get_http_origin();
-		$origin = $origin ? untrailingslashit( $origin ) : '';
-		if ( $origin && in_array( $origin, $allowed, true ) ) {
-			header( 'Access-Control-Allow-Origin: ' . $origin );
-			header( 'Access-Control-Allow-Credentials: true' );
-			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
-			header( 'Vary: Origin' );
-		}
-		status_header( 200 );
+	$origin = d7_ganesh_request_origin();
+	if ( ! $origin ) {
+		status_header( 403 );
 		exit;
 	}
-}, 15 );
+
+	d7_ganesh_send_cors_headers( $origin );
+	status_header( 204 );
+	exit;
+}, 1 );
+
+// Add CORS headers to actual responses and expose pagination metadata.
+add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
+	$route = $request instanceof WP_REST_Request ? $request->get_route() : '';
+	if ( 0 !== strpos( $route, '/d7-ganesh/v1' ) ) {
+		return $served;
+	}
+
+	$origin = d7_ganesh_request_origin();
+	if ( $origin ) {
+		d7_ganesh_send_cors_headers( $origin );
+	}
+
+	return $served;
+}, 20, 3 );

@@ -35,14 +35,11 @@
   }
 
   function request(path) {
-    var headers = { "Content-Type": "application/json" };
     var key = getKey();
-    if (key) headers["X-D7-Admin-Key"] = key;
+    var url = new URL(API_BASE + path, window.location.href);
+    if (key) url.searchParams.set("admin_key", key);
 
-    return fetch(API_BASE + path, {
-      headers: headers,
-      credentials: key ? "omit" : "include"
-    })
+    return fetch(url.toString(), { credentials: key ? "omit" : "include" })
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (json) {
           if (!response.ok) {
