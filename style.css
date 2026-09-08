@@ -1,0 +1,491 @@
+/* ==========================================================================
+   D7 News Telugu — వినాయక చవితి ఉచిత గణేష్ విగ్రహాల పంపిణీ
+   style.css
+   Design: temple torana arch + prasadam-slip token, mobile first.
+   ========================================================================== */
+
+/* ---------------------------- Design tokens ---------------------------- */
+:root {
+    /* Colour: festival palette */
+    --cream:     #FFF4E1;   /* turmeric cream page background */
+    --cream-2:   #FFFBF3;   /* card surface */
+    --maroon:    #7A1220;   /* kumkum — primary text & outlines */
+    --maroon-2:  #A63A3A;   /* softened maroon for secondary text */
+    --marigold:  #F4A024;   /* garland yellow */
+    --sindoor:   #E2571E;   /* action colour */
+    --gold:      #C68A2E;   /* temple brass, borders */
+    --green:     #1F6B4E;   /* mango leaf, success */
+    --skin:      #FBDDAF;   /* idol fill */
+  
+    /* Type scale (1.25) */
+    --t-xs:  0.8125rem;
+    --t-sm:  0.9375rem;
+    --t-md:  1.0625rem;
+    --t-lg:  1.3125rem;
+    --t-xl:  1.625rem;
+  
+    --radius:     18px;
+    --radius-sm:  12px;
+    --shadow:     0 10px 30px rgba(122, 18, 32, 0.10);
+    --shadow-lift:0 16px 44px rgba(122, 18, 32, 0.16);
+    --ring:       0 0 0 3px rgba(226, 87, 30, 0.28);
+  }
+  
+  /* ------------------------------- Reset --------------------------------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  
+  html { -webkit-text-size-adjust: 100%; }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: "Noto Sans Telugu", "Nirmala UI", system-ui, sans-serif;
+    font-size: var(--t-md);
+    line-height: 1.75;
+    color: var(--maroon);
+    background-color: var(--cream);
+    /* Soft festival background: two warm glows + a faint dotted rangoli grid */
+    background-image:
+      radial-gradient(circle at 12% 4%,  rgba(244, 160, 36, 0.28), transparent 42%),
+      radial-gradient(circle at 88% 12%, rgba(226, 87, 30, 0.16), transparent 46%),
+      radial-gradient(rgba(198, 138, 46, 0.16) 1.2px, transparent 1.2px);
+    background-size: auto, auto, 22px 22px;
+    background-attachment: fixed, fixed, scroll;
+  }
+  
+  h1, h2, h3 {
+    font-family: "Baloo Tammudu 2", "Noto Sans Telugu", system-ui, sans-serif;
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 0;
+  }
+  
+  p { margin: 0; }
+  
+  a { color: var(--sindoor); }
+  
+  /* --------------------------- Layout wrapper ---------------------------- */
+  .page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 18px 56px;
+  }
+  
+  /* ------------------------------- Toran --------------------------------- */
+  /* Hanging mango-leaf and marigold garland pinned to the top of the page.  */
+  .toran {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: 34px;
+    filter: drop-shadow(0 3px 4px rgba(122, 18, 32, 0.18));
+    transform-origin: top center;
+    animation: garland-drop 700ms cubic-bezier(.2, .8, .3, 1) both;
+  }
+  .toran__svg { display: block; width: 100%; height: 34px; }
+  
+  @keyframes garland-drop {
+    from { transform: translateY(-34px); }
+    to   { transform: translateY(0); }
+  }
+  
+  /* -------------------------------- Arch --------------------------------- */
+  .arch { padding-top: 26px; text-align: center; }
+  
+  .arch__frame {
+    position: relative;
+    padding: 30px 22px 34px;
+    /* Torana: tall rounded top, squared base — reads as a temple doorway */
+    border: 2px solid var(--gold);
+    border-radius: 190px 190px var(--radius) var(--radius);
+    background:
+      linear-gradient(180deg, rgba(255, 251, 243, 0.96), rgba(255, 244, 225, 0.82));
+    box-shadow: var(--shadow), inset 0 0 0 6px rgba(244, 160, 36, 0.16);
+  }
+  
+  .ganesha { width: min(190px, 52vw); height: auto; display: block; margin: 0 auto 10px; }
+  .ganesha__halo      { fill: none; stroke: var(--gold); stroke-width: 1.6; stroke-dasharray: 3 8; }
+  .ganesha__skin      { fill: var(--skin); stroke: var(--maroon); stroke-width: 3.2; stroke-linejoin: round; }
+  .ganesha__trunk     { fill: none; stroke: var(--maroon); stroke-width: 13; stroke-linecap: round; }
+  .ganesha__tusk      { stroke: #FFFDF7; stroke-width: 6; stroke-linecap: round; }
+  .ganesha__line      { fill: none; stroke: var(--maroon); stroke-width: 2.6; stroke-linecap: round; }
+  .ganesha__pupil     { fill: var(--maroon); }
+  .ganesha__tilak     { fill: none; stroke: var(--sindoor); stroke-width: 2.6; stroke-linecap: round; }
+  .ganesha__crown     { fill: var(--marigold); stroke: var(--maroon); stroke-width: 3.2; stroke-linejoin: round; }
+  .ganesha__crownjewel{ fill: var(--sindoor); }
+  
+  .arch__blessing {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-sm);
+    color: var(--gold);
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  
+  .arch__title {
+    font-size: clamp(1.45rem, 6vw, var(--t-xl));
+    color: var(--maroon);
+    text-wrap: balance;
+  }
+  
+  .arch__subtitle {
+    margin-top: 10px;
+    font-size: var(--t-sm);
+    color: var(--maroon-2);
+    max-width: 34ch;
+    margin-inline: auto;
+  }
+  
+  /* Diyas sitting at the foot of the arch */
+  .diyas {
+    display: flex;
+    justify-content: center;
+    gap: 46px;
+    margin-top: -18px;
+  }
+  .diya { width: 52px; height: 52px; }
+  .diya__bowl  { fill: var(--maroon); }
+  .diya__wick  { stroke: #4A3212; stroke-width: 3; }
+  .diya__flame {
+    fill: var(--marigold);
+    transform-origin: 30px 32px;
+    animation: flicker 2.4s ease-in-out infinite;
+  }
+  .diya:last-child .diya__flame { animation-delay: -1.1s; }
+  
+  @keyframes flicker {
+    0%, 100% { transform: scaleY(1)    scaleX(1);    opacity: 1;   }
+    40%      { transform: scaleY(1.14) scaleX(0.94); opacity: .92; }
+    70%      { transform: scaleY(0.94) scaleX(1.04); opacity: 1;   }
+  }
+  
+  /* ------------------------------- Panel --------------------------------- */
+  .panel {
+    margin-top: 26px;
+    background: var(--cream-2);
+    border: 1px solid rgba(198, 138, 46, 0.45);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 20px 20px;
+  }
+  
+  .panel__title { font-size: var(--t-lg); }
+  
+  .panel__note {
+    margin-top: 6px;
+    font-size: var(--t-sm);
+    color: var(--maroon-2);
+  }
+  
+  .panel__head {
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px dashed rgba(198, 138, 46, 0.6);
+  }
+  
+  .panel__count {
+    margin-top: 18px;
+    text-align: center;
+    font-size: var(--t-xs);
+    color: var(--maroon-2);
+  }
+  
+  /* ------------------------------- Fields -------------------------------- */
+  .form { display: grid; gap: 18px; }
+  
+  .field { display: grid; gap: 7px; }
+  
+  .field__label {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-md);
+    font-weight: 600;
+    color: var(--maroon);
+  }
+  
+  .field__input {
+    width: 100%;
+    font-family: inherit;
+    font-size: var(--t-md);
+    color: var(--maroon);
+    background: #FFFDF8;
+    border: 1.5px solid rgba(198, 138, 46, 0.55);
+    border-radius: var(--radius-sm);
+    padding: 13px 14px;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+  
+  .field__input::placeholder { color: rgba(122, 18, 32, 0.38); }
+  
+  .field__input:focus-visible {
+    outline: none;
+    border-color: var(--sindoor);
+    box-shadow: var(--ring);
+  }
+  
+  .field__input--area { resize: vertical; min-height: 92px; line-height: 1.6; }
+  
+  /* Phone input with a fixed +91 prefix */
+  .field__phone {
+    display: flex;
+    align-items: stretch;
+    background: #FFFDF8;
+    border: 1.5px solid rgba(198, 138, 46, 0.55);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .field__phone:focus-within { border-color: var(--sindoor); box-shadow: var(--ring); }
+  
+  .field__prefix {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: var(--t-sm);
+    color: var(--maroon-2);
+    background: rgba(244, 160, 36, 0.16);
+    border-right: 1.5px solid rgba(198, 138, 46, 0.4);
+  }
+  
+  .field__input--phone {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    letter-spacing: 0.08em;
+  }
+  .field__input--phone:focus-visible { box-shadow: none; }
+  
+  /* Auto-filled token field — visibly not editable */
+  .field__input--token {
+    background: rgba(244, 160, 36, 0.12);
+    border-style: dashed;
+    color: var(--maroon-2);
+    font-size: var(--t-sm);
+    cursor: not-allowed;
+  }
+  
+  .field__hint { font-size: var(--t-xs); color: var(--maroon-2); }
+  
+  /* Validation state */
+  .field__error {
+    font-size: var(--t-xs);
+    color: #B3221F;
+    min-height: 0;
+  }
+  .field__error:empty { display: none; }
+  
+  .field--invalid .field__input,
+  .field--invalid .field__phone {
+    border-color: #B3221F;
+    background: #FFF6F4;
+  }
+  
+  /* ------------------------------ Buttons -------------------------------- */
+  .submit {
+    margin-top: 4px;
+    width: 100%;
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-lg);
+    font-weight: 600;
+    color: #FFF8EC;
+    background: linear-gradient(180deg, var(--sindoor), #C7420F);
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 20px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(226, 87, 30, 0.34);
+    transition: transform 120ms ease, box-shadow 160ms ease;
+  }
+  .submit:hover  { box-shadow: 0 12px 26px rgba(226, 87, 30, 0.42); }
+  .submit:active { transform: translateY(2px); box-shadow: 0 5px 14px rgba(226, 87, 30, 0.34); }
+  .submit:focus-visible { outline: 3px solid var(--maroon); outline-offset: 3px; }
+  
+  .btn {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-md);
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 12px 20px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 120ms ease, background-color 160ms ease;
+  }
+  .btn:active { transform: translateY(2px); }
+  .btn:focus-visible { outline: 3px solid var(--maroon); outline-offset: 3px; }
+  
+  .btn--gold {
+    background: var(--marigold);
+    color: var(--maroon);
+    box-shadow: 0 8px 18px rgba(244, 160, 36, 0.4);
+  }
+  .btn--gold:hover { background: #FFB33E; }
+  
+  .btn--plain {
+    background: transparent;
+    color: var(--maroon);
+    border-color: rgba(198, 138, 46, 0.7);
+  }
+  .btn--plain:hover { background: rgba(244, 160, 36, 0.16); }
+  
+  /* ------------------------------ Result --------------------------------- */
+  .result { margin-top: 26px; }
+  
+  /* Reveal answers the person's submit action */
+  .result[data-enter] { animation: reveal 420ms cubic-bezier(.2, .8, .3, 1) both; }
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+  }
+  
+  .result__banner { text-align: center; margin-bottom: 20px; }
+  
+  .result__tick { width: 62px; height: 62px; }
+  .result__tick circle { fill: rgba(31, 107, 78, 0.12); stroke: var(--green); stroke-width: 2.5; }
+  .result__tick path {
+    fill: none; stroke: var(--green); stroke-width: 4.5;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 34; stroke-dashoffset: 0;
+    animation: draw-tick 520ms ease-out both;
+  }
+  @keyframes draw-tick { from { stroke-dashoffset: 34; } to { stroke-dashoffset: 0; } }
+  
+  .result__title { margin-top: 10px; font-size: var(--t-lg); color: var(--green); }
+  .result__sub   { margin-top: 4px; font-size: var(--t-sm); color: var(--maroon-2); }
+  
+  /* -------------------------- Token slip (hero) --------------------------- */
+  /* Scalloped edge + perforation, like a temple prasadam counter slip.       */
+  .slip {
+    position: relative;
+    background: var(--cream-2);
+    border: 2px solid var(--gold);
+    border-radius: var(--radius);
+    padding: 22px 20px 26px;
+    box-shadow: var(--shadow-lift);
+    overflow: hidden;
+  }
+  
+  /* scalloped strip along the top */
+  .slip::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 12px;
+    background:
+      radial-gradient(circle at 6px 0, transparent 6px, var(--marigold) 6.5px) 0 0 / 12px 12px repeat-x;
+  }
+  
+  .slip__top { text-align: center; padding-top: 8px; }
+  
+  .slip__brand {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-lg);
+    font-weight: 700;
+    color: var(--maroon);
+  }
+  .slip__event { font-size: var(--t-xs); color: var(--maroon-2); }
+  
+  .slip__tokenbox {
+    margin: 16px 0 20px;
+    padding: 16px 12px;
+    text-align: center;
+    border: 2px dashed var(--sindoor);
+    border-radius: var(--radius-sm);
+    background: rgba(244, 160, 36, 0.14);
+  }
+  .slip__tokenlabel { font-size: var(--t-xs); color: var(--maroon-2); }
+  .slip__token {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: clamp(1.5rem, 7.4vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--maroon);
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  
+  .slip__rows { margin: 0; display: grid; gap: 12px; }
+  .slip__row {
+    display: grid;
+    grid-template-columns: 108px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding-bottom: 10px;
+    border-bottom: 1px dotted rgba(198, 138, 46, 0.6);
+  }
+  .slip__row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .slip__row dt { font-size: var(--t-sm); color: var(--maroon-2); }
+  .slip__row dd { margin: 0; font-size: var(--t-sm); font-weight: 500; overflow-wrap: anywhere; }
+  
+  .slip__foot {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(198, 138, 46, 0.7);
+    text-align: center;
+    font-size: var(--t-xs);
+    color: var(--maroon-2);
+  }
+  
+  .result__actions {
+    margin-top: 20px;
+    display: grid;
+    gap: 12px;
+  }
+  
+  /* ------------------------------- Footer -------------------------------- */
+  .footer { margin-top: 34px; text-align: center; }
+  
+  .footer__card {
+    background: rgba(122, 18, 32, 0.94);
+    color: #FFF0D8;
+    border-radius: var(--radius);
+    padding: 20px 18px;
+    box-shadow: var(--shadow);
+  }
+  .footer__brand {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-lg);
+    font-weight: 700;
+    color: var(--marigold);
+  }
+  .footer__line { font-size: var(--t-sm); }
+  .footer__line a { color: #FFD79A; text-decoration: none; border-bottom: 1px solid rgba(255, 215, 154, 0.5); }
+  
+  .footer__small { margin-top: 14px; font-size: var(--t-xs); color: var(--maroon-2); }
+  
+  /* ------------------------ Responsive: tablet + up ----------------------- */
+  @media (min-width: 620px) {
+    .page   { max-width: 700px; padding-inline: 28px; }
+    .panel  { padding: 30px 32px 26px; }
+    .slip   { padding: 26px 30px 30px; }
+    .result__actions { grid-template-columns: 1fr 1fr; }
+    .diyas  { gap: 90px; }
+  }
+  
+  @media (min-width: 1024px) {
+    .page { max-width: 760px; }
+    .arch__frame { padding: 40px 40px 42px; }
+    .slip__row { grid-template-columns: 130px 1fr; }
+  }
+  
+  /* ---------------------------- Accessibility ----------------------------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+  
+  /* ------------------------------- Print ---------------------------------- */
+  /* Only the token slip goes on paper. */
+  @media print {
+    body { background: #fff; }
+    .toran, .arch, .panel, .footer, .result__actions, .result__banner { display: none !important; }
+    .page { max-width: 100%; padding: 0; }
+    .result { margin: 0; }
+    .slip {
+      box-shadow: none;
+      border: 2px solid #7A1220;
+      page-break-inside: avoid;
+    }
+    .slip::before { background: none; }
+  }
