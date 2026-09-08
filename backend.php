@@ -1150,3 +1150,127 @@ add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
 
 	return $served;
 }, 20, 3 );
+
+
+/* =============================================================================
+ * ADMIN ACTIONS
+ * ========================================================================== */
+
+// These write routes use POST with form-encoded bodies to avoid CORS preflight.
+add_action( 'rest_api_init', function () {
+	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/status', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'd7_ganesh_rest_update_status',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+		'args'                => array(
+			'id'     => array( 'sanitize_callback' => 'absint' ),
+			'status' => array(
+				'required'          => true,
+				'sanitize_callback' => 'sanitize_key',
+			),
+		),
+	) );
+
+	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/delete', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'd7_ganesh_rest_delete',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+		'args'                => array(
+			'id' => array( 'sanitize_callback' => 'absint' ),
+		),
+	) );
+
+	register_rest_route( 'd7-ganesh/v1', '/export', array(
+		'methods'             => WP_REST_Server::READABLE,
+		'callback'            => 'd7_ganesh_rest_export',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+	) );
+} );
+
+if ( ! function_exists( 'd7_ganesh_rest_update_status' ) ) {
+	function d7_ganesh_rest_update_status( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$id     = (int) $request->get_param( 'id' );
+		$status = (string) $request->get_param( 'status' );
+		$row    = d7_ganesh_get_registration( $id );
+
+		if ( ! in_array( $status, array( 'pending', 'collected' ), true ) ) {
+			return new WP_Error( 'd7_invalid_status', 'Status must be pending or collected.', array( 'status' => 400 ) );
+		}
+		if ( ! $row ) {
+			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
+		}
+
+		$updated = $wpdb->update(
+			d7_ganesh_table(),
+			array( 'status' => $status ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		if ( false === $updated ) {
+			return new WP_Error( 'd7_db_error', 'Registration status could not be updated.', array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'data'    => d7_ganesh_format_row( d7_ganesh_get_registration( $id ), true ),
+		) );
+	}
+}
+
+if ( ! function_exists( 'd7_ganesh_rest_delete' ) ) {
+	function d7_ganesh_rest_delete( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$id  = (int) $request->get_param( 'id' );
+		$row = d7_ganesh_get_registration( $id );
+		if ( ! $row ) {
+			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
+		}
+
+		$deleted = $wpdb->delete( d7_ganesh_table(), array( 'id' => $id ), array( '%d' ) );
+		if ( false === $deleted ) {
+			return new WP_Error( 'd7_db_error', 'Registration could not be deleted.', array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'deleted' => $id,
+			'token'   => $row['token'],
+		) );
+	}
+}
+
+if ( ! function_exists( 'd7_ganesh_rest_export' ) ) {
+	function d7_ganesh_rest_export( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$rows     = $wpdb->get_results( 'SELECT * FROM ' . d7_ganesh_table() . ' ORDER BY id ASC', ARRAY_A );
+		$filename = 'd7-ganesh-registrations-' . current_time( 'Y-m-d-His' ) . '.csv';
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=' . $filename );
+
+		$out = fopen( 'php://output', 'w' );
+		fwrite( $out, "\xEF\xBB\xBF" );
+		fputcsv( $out, array( 'Token', 'Name', 'Phone', 'Address', 'Status', 'Registered at' ) );
+
+		foreach ( $rows as $row ) {
+			fputcsv( $out, array(
+				$row['token'],
+				$row['name'],
+				$row['phone'],
+				$row['address'],
+				$row['status'],
+				$row['created_at'],
+			) );
+		}
+
+		fclose( $out );
+		exit;
+	}
+}

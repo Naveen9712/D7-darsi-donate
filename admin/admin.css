@@ -82,3 +82,41 @@ td { max-width: 220px; overflow-wrap: anywhere; }
   .access { margin-top: 8vh; padding: 26px 22px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+/* ---------------------------- Admin actions ----------------------------- */
+.notice {
+  margin: 15px 0 0;
+  padding: 11px 13px;
+  border: 1px solid #a9cfbc;
+  border-radius: 6px;
+  color: var(--green);
+  background: #eaf5f0;
+}
+
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-action {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 9px;
+  color: var(--ink);
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease;
+}
+.row-action:hover { background: #f4f0e6; }
+.row-action--primary { border-color: var(--green); color: var(--green); }
+.row-action--primary:hover { background: #e4f1eb; }
+.row-action--danger { border-color: #e0b3ad; color: var(--red); }
+.row-action--danger:hover { background: #fdefec; }
+td:last-child { max-width: none; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.button--danger { border-color: #e0b3ad; color: var(--red); background: #fdefec; }
+.button--danger:hover { background: #fbe2dd; }
+
+@media (max-width: 720px) {
+  .row-actions { flex-direction: column; align-items: stretch; }
+  .row-action { width: 100%; }
+}

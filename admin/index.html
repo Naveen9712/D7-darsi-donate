@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
   <meta name="description" content="D7 Ganesh registration administration">
   <title>D7 Ganesh | Admin</title>
   <link rel="stylesheet" href="/admin/admin.css">
@@ -16,6 +17,7 @@
       </div>
       <div class="topbar__actions">
         <a class="button button--quiet" href="../">Open public form</a>
+        <button class="button button--quiet" id="exportBtn" type="button" hidden>Export CSV</button>
         <button class="button button--quiet" id="signOutBtn" type="button" hidden>Sign out</button>
       </div>
     </header>
@@ -44,6 +46,7 @@
       </div>
 
       <p class="alert" id="dashboardAlert" role="alert" hidden></p>
+      <p class="notice" id="dashboardNotice" role="status" hidden></p>
 
       <div class="stats" aria-label="Registration summary">
         <article class="stat"><span>Total registrations</span><strong id="totalStat">-</strong></article>
@@ -73,7 +76,7 @@
         </form>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Token</th><th>Name</th><th>Phone</th><th>Address</th><th>Registered</th><th>Status</th><th><span class="sr-only">View</span></th></tr></thead>
+            <thead><tr><th>Token</th><th>Name</th><th>Phone</th><th>Address</th><th>Registered</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="recordsBody"><tr><td class="empty" colspan="7">Loading registrations...</td></tr></tbody>
           </table>
         </div>
@@ -87,7 +90,10 @@
     <p class="eyebrow">Registration details</p>
     <h2 id="detailToken">-</h2>
     <dl class="detail-list" id="detailList"></dl>
-    <a class="button button--primary" href="https://pncreators.com/wp-admin/admin.php?page=d7-ganesh-registrations" target="_blank" rel="noopener">Manage in WordPress</a>
+    <div class="dialog-actions">
+      <button class="button button--primary" id="dialogCollectBtn" type="button">Mark idol collected</button>
+      <button class="button button--danger" id="dialogDeleteBtn" type="button">Delete</button>
+    </div>
   </dialog>
 
   <script>

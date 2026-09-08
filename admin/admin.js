@@ -9,8 +9,10 @@
   var accessAlert = document.getElementById("accessAlert");
   var dashboard = document.getElementById("dashboard");
   var dashboardAlert = document.getElementById("dashboardAlert");
+  var dashboardNotice = document.getElementById("dashboardNotice");
   var signOutBtn = document.getElementById("signOutBtn");
   var refreshBtn = document.getElementById("refreshBtn");
+  var exportBtn = document.getElementById("exportBtn");
   var filterForm = document.getElementById("filterForm");
   var searchInput = document.getElementById("searchInput");
   var statusInput = document.getElementById("statusInput");
@@ -19,8 +21,14 @@
   var pagination = document.getElementById("pagination");
   var detailDialog = document.getElementById("detailDialog");
   var closeDialogBtn = document.getElementById("closeDialogBtn");
+  var dialogCollectBtn = document.getElementById("dialogCollectBtn");
+  var dialogDeleteBtn = document.getElementById("dialogDeleteBtn");
   var currentPage = 1;
   var totalPages = 1;
+  var currentRow = null;
+  var noticeTimer = null;
+
+  /* ----------------------------- session key ---------------------------- */
 
   function getKey() {
     try { return sessionStorage.getItem(KEY_STORAGE) || ""; } catch (error) { return ""; }
@@ -34,33 +42,76 @@
     try { sessionStorage.removeItem(KEY_STORAGE); } catch (error) {}
   }
 
-  function request(path) {
+  /**
+   * Build an API URL with the admin key attached as a query parameter.
+   * The key is NOT sent as a custom header: a custom header would trigger a
+   * CORS preflight, and simple requests avoid that entirely.
+   */
+  function apiUrl(path) {
     var key = getKey();
     var url = new URL(API_BASE + path, window.location.href);
     if (key) url.searchParams.set("admin_key", key);
-
-    return fetch(url.toString(), { credentials: key ? "omit" : "include" })
-      .then(function (response) {
-        return response.json().catch(function () { return {}; }).then(function (json) {
-          if (!response.ok) {
-            var error = new Error(json.message || "Request failed");
-            error.status = response.status;
-            throw error;
-          }
-          return { data: json, headers: response.headers };
-        });
-      });
+    return url;
   }
+
+  /* ------------------------------ transport ----------------------------- */
+
+  function handleResponse(response) {
+    return response.json().catch(function () { return {}; }).then(function (json) {
+      if (!response.ok) {
+        var error = new Error(json.message || "Request failed");
+        error.status = response.status;
+        throw error;
+      }
+      return { data: json, headers: response.headers };
+    });
+  }
+
+  function request(path) {
+    var key = getKey();
+    return fetch(apiUrl(path).toString(), {
+      credentials: key ? "omit" : "include"
+    }).then(handleResponse);
+  }
+
+  /**
+   * POST with a form-encoded body. Form encoding keeps this a "simple
+   * request" — application/json would force a preflight.
+   */
+  function post(path, body) {
+    var key = getKey();
+    return fetch(apiUrl(path).toString(), {
+      method: "POST",
+      credentials: key ? "omit" : "include",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body || {}).toString()
+    }).then(handleResponse);
+  }
+
+  /* ------------------------------- messages ------------------------------ */
 
   function showAlert(element, message) {
     element.textContent = message;
     element.hidden = !message;
   }
 
+  function showNotice(message) {
+    dashboardNotice.textContent = message;
+    dashboardNotice.hidden = !message;
+
+    window.clearTimeout(noticeTimer);
+    if (message) {
+      noticeTimer = window.setTimeout(function () { dashboardNotice.hidden = true; }, 4000);
+    }
+  }
+
+  /* ------------------------------- screens ------------------------------- */
+
   function enterDashboard() {
     accessPanel.hidden = true;
     dashboard.hidden = false;
     signOutBtn.hidden = false;
+    exportBtn.hidden = false;
     loadDashboard();
   }
 
@@ -68,6 +119,7 @@
     dashboard.hidden = true;
     accessPanel.hidden = false;
     signOutBtn.hidden = true;
+    exportBtn.hidden = true;
     showAlert(accessAlert, message || "Access denied. Check the administrator key.");
     adminKey.focus();
   }
@@ -75,6 +127,8 @@
   function formatNumber(value) {
     return Number(value || 0).toLocaleString("en-IN");
   }
+
+  /* -------------------------------- data --------------------------------- */
 
   function loadStats() {
     return request("/admin-stats").then(function (result) {
@@ -111,19 +165,88 @@
     });
   }
 
+  function loadDashboard() {
+    showAlert(accessAlert, "");
+    showAlert(dashboardAlert, "");
+    return Promise.all([loadStats(), loadRecords()]).catch(handleDashboardError);
+  }
+
+  function handleDashboardError(error) {
+    if (error && (error.status === 401 || error.status === 403)) {
+      clearKey();
+      rejectAccess("Access denied. Check the administrator key or sign in through WordPress.");
+      return;
+    }
+    showAlert(dashboardAlert, error.message || "Could not load registration data.");
+  }
+
+  /* ------------------------------- actions -------------------------------- */
+
+  function setStatus(row, status) {
+    return post("/registrations/" + row.id + "/status", { status: status })
+      .then(function () {
+        showNotice(row.token + " marked as " + status + ".");
+        return loadDashboard();
+      })
+      .catch(handleDashboardError);
+  }
+
+  function deleteRow(row) {
+    var confirmed = window.confirm(
+      "Delete " + row.token + " (" + row.name + ")?\n\n" +
+      "This cannot be undone. The phone number becomes free to register again, " +
+      "but this token number will never be reissued."
+    );
+    if (!confirmed) return Promise.resolve();
+
+    return post("/registrations/" + row.id + "/delete", {})
+      .then(function () {
+        showNotice(row.token + " deleted.");
+        return loadDashboard();
+      })
+      .catch(handleDashboardError);
+  }
+
+  /* -------------------------------- table --------------------------------- */
+
   function createRow(row) {
     var tr = document.createElement("tr");
-    tr.innerHTML = "<td><strong></strong></td><td></td><td></td><td></td><td></td><td><span class=\"status\"></span></td><td><button class=\"view-button\" type=\"button\">View</button></td>";
+    tr.innerHTML =
+      "<td><strong></strong></td><td></td><td></td><td></td><td></td>" +
+      '<td><span class="status"></span></td>' +
+      '<td><div class="row-actions"></div></td>';
+
     tr.children[0].firstChild.textContent = row.token || "-";
     tr.children[1].textContent = row.name || "-";
     tr.children[2].textContent = row.phone || "-";
     tr.children[3].textContent = row.address || "-";
     tr.children[4].textContent = row.created_display || row.created_at || "-";
+
     var status = tr.children[5].firstChild;
     status.textContent = row.status || "-";
     status.classList.add(row.status === "collected" ? "status--collected" : "status--pending");
-    tr.lastChild.firstChild.addEventListener("click", function () { openDetails(row); });
+
+    var actions = tr.children[6].firstChild;
+    actions.appendChild(actionButton("View", "", function () { openDetails(row); }));
+
+    if (row.status === "collected") {
+      actions.appendChild(actionButton("Undo", "", function () { setStatus(row, "pending"); }));
+    } else {
+      actions.appendChild(actionButton("Collected", "is-primary", function () { setStatus(row, "collected"); }));
+    }
+
+    actions.appendChild(actionButton("Delete", "is-danger", function () { deleteRow(row); }));
+
     return tr;
+  }
+
+  function actionButton(label, modifier, onClick) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "row-action" + (modifier ? " row-action--" + modifier.replace("is-", "") : "");
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
   function renderPagination() {
@@ -146,24 +269,20 @@
     });
   }
 
-  function loadDashboard() {
-    showAlert(accessAlert, "");
-    showAlert(dashboardAlert, "");
-    Promise.all([loadStats(), loadRecords()]).catch(handleDashboardError);
-  }
-
-  function handleDashboardError(error) {
-    if (error && (error.status === 401 || error.status === 403)) {
-      clearKey();
-      rejectAccess("Access denied. Check the administrator key or sign in through WordPress.");
-      return;
-    }
-    showAlert(dashboardAlert, error.message || "Could not load registration data.");
-  }
+  /* -------------------------------- dialog -------------------------------- */
 
   function openDetails(row) {
+    currentRow = row;
     document.getElementById("detailToken").textContent = row.token || "Registration";
-    var fields = [["Name", row.name], ["Phone", row.phone], ["Address", row.address], ["Registered", row.created_display || row.created_at], ["Status", row.status]];
+
+    var fields = [
+      ["Name", row.name],
+      ["Phone", row.phone],
+      ["Address", row.address],
+      ["Registered", row.created_display || row.created_at],
+      ["Status", row.status]
+    ];
+
     var detailList = document.getElementById("detailList");
     detailList.innerHTML = "";
     fields.forEach(function (field) {
@@ -174,8 +293,15 @@
       detailList.appendChild(dt);
       detailList.appendChild(dd);
     });
+
+    dialogCollectBtn.textContent = row.status === "collected"
+      ? "Move back to pending"
+      : "Mark idol collected";
+
     detailDialog.showModal();
   }
+
+  /* -------------------------------- events -------------------------------- */
 
   accessForm.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -198,10 +324,31 @@
     loadRecords().catch(handleDashboardError);
   });
 
+  // The CSV download is a plain browser navigation, so CORS never applies.
+  exportBtn.addEventListener("click", function () {
+    window.open(apiUrl("/export").toString(), "_blank");
+  });
+
   refreshBtn.addEventListener("click", function () { loadDashboard(); });
   signOutBtn.addEventListener("click", function () { clearKey(); location.reload(); });
   closeDialogBtn.addEventListener("click", function () { detailDialog.close(); });
-  detailDialog.addEventListener("click", function (event) { if (event.target === detailDialog) detailDialog.close(); });
+  detailDialog.addEventListener("click", function (event) {
+    if (event.target === detailDialog) detailDialog.close();
+  });
+
+  dialogCollectBtn.addEventListener("click", function () {
+    if (!currentRow) return;
+    var next = currentRow.status === "collected" ? "pending" : "collected";
+    detailDialog.close();
+    setStatus(currentRow, next);
+  });
+
+  dialogDeleteBtn.addEventListener("click", function () {
+    if (!currentRow) return;
+    var row = currentRow;
+    detailDialog.close();
+    deleteRow(row);
+  });
 
   if (getKey()) enterDashboard();
 })();
