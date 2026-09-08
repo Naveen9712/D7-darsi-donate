@@ -60,6 +60,13 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 			 * false = a guessed phone number cannot reveal someone's token
 			 */
 			'reveal_token_on_duplicate' => true,
+
+			/**
+			 * Optional key for the standalone /admin/ page on the static site.
+			 * Generate a long random value and keep it out of public frontend code.
+			 * Leave empty to use the normal WordPress administrator session only.
+			 */
+			'admin_api_key' => 'Upsc@365',
 		);
 	}
 }
@@ -375,6 +382,15 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
  */
 if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
 	function d7_ganesh_admin_permission() {
+		$config = d7_ganesh_config();
+		$provided_key = isset( $_SERVER['HTTP_X_D7_ADMIN_KEY'] )
+			? (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] )
+			: '';
+
+		if ( ! empty( $config['admin_api_key'] ) && $provided_key && hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
+			return true;
+		}
+
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error(
 				'rest_not_logged_in',
@@ -437,6 +453,15 @@ add_action( 'rest_api_init', function () {
 			) );
 		},
 		'permission_callback' => '__return_true',
+	) );
+
+	// ---- GET /admin-stats (admin, dashboard counts) ----------------------
+	register_rest_route( 'd7-ganesh/v1', '/admin-stats', array(
+		'methods'             => WP_REST_Server::READABLE,
+		'callback'            => function () {
+			return rest_ensure_response( d7_ganesh_get_counts() );
+		},
+		'permission_callback' => 'd7_ganesh_admin_permission',
 	) );
 
 	// ---- GET /registrations (admin) --------------------------------------
@@ -1074,7 +1099,7 @@ add_action( 'rest_api_init', function () {
 		if ( $origin && in_array( $origin, $allowed, true ) ) {
 			header( 'Access-Control-Allow-Origin: ' . $origin );
 			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce' );
+			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
 			header( 'Vary: Origin' );
 		}
 
@@ -1090,7 +1115,7 @@ add_action( 'rest_api_init', function () {
 		if ( $origin && in_array( $origin, $allowed, true ) ) {
 			header( 'Access-Control-Allow-Origin: ' . $origin );
 			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
-			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce' );
+			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
 			header( 'Vary: Origin' );
 		}
 		status_header( 200 );
