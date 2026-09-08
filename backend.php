@@ -46,6 +46,7 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 			'allowed_origins' => array(
 				'https://pncreators.com',
 				'https://www.pncreators.com',
+				'https://d7darsidonate.onrender.com',
 				'http://localhost:5500',
 				'http://127.0.0.1:5500',
 				'http://localhost:8080',
@@ -1098,6 +1099,7 @@ add_action( 'rest_api_init', function () {
 
 		if ( $origin && in_array( $origin, $allowed, true ) ) {
 			header( 'Access-Control-Allow-Origin: ' . $origin );
+			header( 'Access-Control-Allow-Credentials: true' );
 			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
 			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
 			header( 'Vary: Origin' );
@@ -1114,6 +1116,7 @@ add_action( 'rest_api_init', function () {
 		$origin = $origin ? untrailingslashit( $origin ) : '';
 		if ( $origin && in_array( $origin, $allowed, true ) ) {
 			header( 'Access-Control-Allow-Origin: ' . $origin );
+			header( 'Access-Control-Allow-Credentials: true' );
 			header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
 			header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
 			header( 'Vary: Origin' );

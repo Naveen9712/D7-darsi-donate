@@ -39,7 +39,10 @@
     var key = getKey();
     if (key) headers["X-D7-Admin-Key"] = key;
 
-    return fetch(API_BASE + path, { headers: headers, credentials: "include" })
+    return fetch(API_BASE + path, {
+      headers: headers,
+      credentials: key ? "omit" : "include"
+    })
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (json) {
           if (!response.ok) {
