@@ -279,6 +279,27 @@
     background: #FFF6F4;
   }
   
+  /* Honeypot — off-screen rather than display:none, which some bots detect */
+  .hp {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  
+  /* Server / network errors */
+  .form__alert {
+    margin: 0;
+    padding: 12px 14px;
+    font-size: var(--t-sm);
+    color: #8A1A12;
+    background: #FFF1EC;
+    border: 1.5px solid #E9A08A;
+    border-radius: var(--radius-sm);
+  }
+  .form__alert[hidden] { display: none; }
+  
   /* ------------------------------ Buttons -------------------------------- */
   .submit {
     margin-top: 4px;
@@ -298,6 +319,14 @@
   .submit:hover  { box-shadow: 0 12px 26px rgba(226, 87, 30, 0.42); }
   .submit:active { transform: translateY(2px); box-shadow: 0 5px 14px rgba(226, 87, 30, 0.34); }
   .submit:focus-visible { outline: 3px solid var(--maroon); outline-offset: 3px; }
+  
+  /* While the request is in flight */
+  .submit[aria-busy="true"] {
+    background: #C98A6A;
+    box-shadow: none;
+    cursor: progress;
+    pointer-events: none;
+  }
   
   .btn {
     font-family: "Baloo Tammudu 2", sans-serif;

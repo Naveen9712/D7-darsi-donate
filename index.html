@@ -8,7 +8,6 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="favicon.png">
-
   <!-- Telugu Unicode fonts: Baloo Tammudu 2 (display) + Noto Sans Telugu (body) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -137,6 +136,15 @@
           <p class="field__hint">ఇది ఆటోమేటిక్‌గా వస్తుంది — మీరు రాయవలసిన అవసరం లేదు.</p>
         </div>
 
+        <!-- Honeypot: hidden from people, filled in by bots. Never remove. -->
+        <div class="hp" aria-hidden="true">
+          <label for="website">Website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+
+        <!-- Server-side / network errors appear here -->
+        <p class="form__alert" id="formAlert" role="alert" hidden></p>
+
         <button type="submit" class="submit" id="submitBtn">నమోదు చేసుకోండి</button>
       </form>
 
@@ -193,6 +201,15 @@
     </footer>
 
   </main>
+
+  <!-- ===================== WordPress backend configuration =====================
+       API lives on the WordPress site: https://pncreators.com/
+       D7_NONCE stays empty on this static page.
+  ========================================================================== -->
+  <script>
+    window.D7_API_BASE = "https://pncreators.com/wp-json/d7-ganesh/v1";
+    window.D7_NONCE = "";
+  </script>
 
   <script src="script.js"></script>
 </body>

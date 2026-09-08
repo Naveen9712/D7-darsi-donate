@@ -1,112 +1,114 @@
 /* ==========================================================================
    D7 News Telugu — ఉచిత గణేష్ విగ్రహాల నమోదు
-   script.js — validation, token generation, localStorage persistence.
-   Frontend only. No backend, no database.
+   script.js — front-end validation + WordPress REST API client.
+
+   WordPress is now the source of truth. The token number is issued by the
+   server (derived from the database row id), so it is unique across every
+   device and browser. localStorage is kept only as a personal receipt cache
+   so the devotee can reopen their own token after a refresh.
    ========================================================================== */
 
    (function () {
     "use strict";
   
     /* ------------------------------ Config ------------------------------- */
-    const STORAGE_KEY  = "d7_ganesh_registrations_v1"; // array of registrations
-    const COUNTER_KEY  = "d7_ganesh_last_token_v1";    // last sequential number
-    const TOKEN_PREFIX = "D7-GANESH-";
-    const TOKEN_PAD    = 4; // D7-GANESH-0001
+  
+    var API_BASE = (window.D7_API_BASE || "/wp-json/d7-ganesh/v1").replace(/\/+$/, "");
+    var REST_NONCE = window.D7_NONCE || "";
+  
+    var RECEIPT_KEY = "d7_ganesh_my_token_v2"; // this browser's own registration
+    var TOKEN_PLACEHOLDER = "నమోదు తర్వాత కేటాయించబడుతుంది";
   
     /* ------------------------------- DOM --------------------------------- */
-    const form        = document.getElementById("regForm");
-    const formPanel   = document.getElementById("formPanel");
-    const resultPanel = document.getElementById("resultPanel");
   
-    const nameInput    = document.getElementById("name");
-    const phoneInput   = document.getElementById("phone");
-    const addressInput = document.getElementById("address");
-    const tokenInput   = document.getElementById("token");
+    var form        = document.getElementById("regForm");
+    var formPanel   = document.getElementById("formPanel");
+    var resultPanel = document.getElementById("resultPanel");
   
-    const nameError    = document.getElementById("nameError");
-    const phoneError   = document.getElementById("phoneError");
-    const addressError = document.getElementById("addressError");
+    var nameInput    = document.getElementById("name");
+    var phoneInput   = document.getElementById("phone");
+    var addressInput = document.getElementById("address");
+    var tokenInput   = document.getElementById("token");
+    var honeypot     = document.getElementById("website");
   
-    const slipToken   = document.getElementById("slipToken");
-    const slipName    = document.getElementById("slipName");
-    const slipPhone   = document.getElementById("slipPhone");
-    const slipAddress = document.getElementById("slipAddress");
-    const slipDate    = document.getElementById("slipDate");
+    var nameError    = document.getElementById("nameError");
+    var phoneError   = document.getElementById("phoneError");
+    var addressError = document.getElementById("addressError");
+    var formAlert    = document.getElementById("formAlert");
   
-    const printBtn  = document.getElementById("printBtn");
-    const againBtn  = document.getElementById("againBtn");
-    const regCount  = document.getElementById("regCount");
+    var slipToken   = document.getElementById("slipToken");
+    var slipName    = document.getElementById("slipName");
+    var slipPhone   = document.getElementById("slipPhone");
+    var slipAddress = document.getElementById("slipAddress");
+    var slipDate    = document.getElementById("slipDate");
   
-    const TOKEN_PLACEHOLDER = "నమోదు తర్వాత కేటాయించబడుతుంది";
+    var submitBtn = document.getElementById("submitBtn");
+    var printBtn  = document.getElementById("printBtn");
+    var againBtn  = document.getElementById("againBtn");
+    var regCount  = document.getElementById("regCount");
   
-    /* --------------------------- Storage helpers -------------------------- */
-    /* localStorage can be unavailable (private mode / disabled). Every read and
-       write is guarded so the form still works, just without persistence.     */
+    var SUBMIT_LABEL = submitBtn.textContent;
   
-    function storageAvailable() {
-      try {
-        const probe = "__d7_test__";
-        window.localStorage.setItem(probe, "1");
-        window.localStorage.removeItem(probe);
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
+    /* ---------------------------- API helper ------------------------------ */
   
-    const HAS_STORAGE = storageAvailable();
+    /**
+     * Small fetch wrapper. Resolves with parsed JSON on 2xx, rejects with the
+     * WordPress error body ({ code, message, data }) on anything else.
+     */
+    function apiRequest(path, options) {
+      options = options || {};
   
-    function getRegistrations() {
-      if (!HAS_STORAGE) return [];
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        const list = raw ? JSON.parse(raw) : [];
-        return Array.isArray(list) ? list : [];
-      } catch (e) {
-        return [];
-      }
-    }
+      var headers = { "Content-Type": "application/json" };
+      if (REST_NONCE) headers["X-WP-Nonce"] = REST_NONCE;
   
-    function saveRegistrations(list) {
-      if (!HAS_STORAGE) return;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-      } catch (e) {
-        /* Quota full or blocked — the current token is still shown on screen. */
-      }
-    }
-  
-    /* ---------------------------- Token number ---------------------------- */
-    /* Sequential and unique: the counter is stored separately so deleting a
-       record never causes a token to be reissued.                            */
-  
-    function nextToken() {
-      let last = 0;
-  
-      if (HAS_STORAGE) {
-        const stored = parseInt(window.localStorage.getItem(COUNTER_KEY), 10);
-        if (!isNaN(stored)) last = stored;
-      }
-  
-      // Safety net: never fall behind the highest token already issued.
-      getRegistrations().forEach(function (r) {
-        const n = parseInt(String(r.token).replace(TOKEN_PREFIX, ""), 10);
-        if (!isNaN(n) && n > last) last = n;
+      return fetch(API_BASE + path, {
+        method: options.method || "GET",
+        headers: headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+      }).then(function (response) {
+        return response.json().catch(function () {
+          return {};
+        }).then(function (json) {
+          if (!response.ok) {
+            json.httpStatus = response.status;
+            throw json;
+          }
+          return json;
+        });
       });
+    }
   
-      const next = last + 1;
+    /* ---------------------- Local receipt (this browser) ------------------ */
   
-      if (HAS_STORAGE) {
-        try { window.localStorage.setItem(COUNTER_KEY, String(next)); } catch (e) {}
+    function saveReceipt(data) {
+      try {
+        window.localStorage.setItem(RECEIPT_KEY, JSON.stringify(data));
+      } catch (e) {
+        /* Private mode or quota — the token is still on screen and on the server. */
       }
+    }
   
-      return TOKEN_PREFIX + String(next).padStart(TOKEN_PAD, "0");
+    function readReceipt() {
+      try {
+        var raw = window.localStorage.getItem(RECEIPT_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+  
+    function clearReceipt() {
+      try {
+        window.localStorage.removeItem(RECEIPT_KEY);
+      } catch (e) {}
     }
   
     /* ---------------------------- Validation ------------------------------ */
+    /* These rules mirror the server rules in snippet 2. The browser copy is for
+       fast feedback only — the server re-checks everything.                   */
   
     function setError(input, errorEl, message) {
-      const field = input.closest(".field");
+      var field = input.closest(".field");
       if (message) {
         field.classList.add("field--invalid");
         errorEl.textContent = message;
@@ -119,16 +121,25 @@
     }
   
     function validateName() {
-      const value = nameInput.value.trim();
-      if (!value)            return setError(nameInput, nameError, "దయచేసి మీ పేరు రాయండి."), false;
-      if (value.length < 3)  return setError(nameInput, nameError, "పేరు కనీసం 3 అక్షరాలు ఉండాలి."), false;
-      if (/\d/.test(value))  return setError(nameInput, nameError, "పేరులో అంకెలు ఉండకూడదు."), false;
+      var value = nameInput.value.trim();
+      if (!value) {
+        setError(nameInput, nameError, "దయచేసి మీ పేరు రాయండి.");
+        return false;
+      }
+      if (value.length < 3) {
+        setError(nameInput, nameError, "పేరు కనీసం 3 అక్షరాలు ఉండాలి.");
+        return false;
+      }
+      if (/\d/.test(value)) {
+        setError(nameInput, nameError, "పేరులో అంకెలు ఉండకూడదు.");
+        return false;
+      }
       setError(nameInput, nameError, "");
       return true;
     }
   
     function validatePhone() {
-      const value = phoneInput.value.trim();
+      var value = phoneInput.value.trim();
       if (!value) {
         setError(phoneInput, phoneError, "దయచేసి మీ ఫోన్ నంబర్ రాయండి.");
         return false;
@@ -137,134 +148,203 @@
         setError(phoneInput, phoneError, "సరైన 10 అంకెల మొబైల్ నంబర్ రాయండి (6, 7, 8 లేదా 9 తో మొదలవ్వాలి).");
         return false;
       }
-      // Duplicate check — one idol per phone number.
-      const existing = getRegistrations().find(function (r) { return r.phone === value; });
-      if (existing) {
-        setError(phoneInput, phoneError,
-          "ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది. మీ టోకెన్ నంబర్: " + existing.token);
-        return false;
-      }
       setError(phoneInput, phoneError, "");
       return true;
     }
   
     function validateAddress() {
-      const value = addressInput.value.trim();
-      if (!value)             return setError(addressInput, addressError, "దయచేసి మీ చిరునామా రాయండి."), false;
-      if (value.length < 10)  return setError(addressInput, addressError, "పూర్తి చిరునామా రాయండి (ఊరు, పిన్ కోడ్ సహా)."), false;
+      var value = addressInput.value.trim();
+      if (!value) {
+        setError(addressInput, addressError, "దయచేసి మీ చిరునామా రాయండి.");
+        return false;
+      }
+      if (value.length < 10) {
+        setError(addressInput, addressError, "పూర్తి చిరునామా రాయండి (ఊరు, పిన్ కోడ్ సహా).");
+        return false;
+      }
       setError(addressInput, addressError, "");
       return true;
     }
   
     /* -------------------------- Input behaviour --------------------------- */
   
-    // Phone: digits only.
     phoneInput.addEventListener("input", function () {
       this.value = this.value.replace(/\D/g, "").slice(0, 10);
       if (this.closest(".field").classList.contains("field--invalid")) validatePhone();
     });
   
-    // Clear an error as soon as the person fixes the field.
     nameInput.addEventListener("input", function () {
       if (this.closest(".field").classList.contains("field--invalid")) validateName();
     });
+  
     addressInput.addEventListener("input", function () {
       if (this.closest(".field").classList.contains("field--invalid")) validateAddress();
     });
   
-    // The token field is never typed into.
-    tokenInput.addEventListener("focus", function () { this.blur(); });
+    tokenInput.addEventListener("focus", function () {
+      this.blur();
+    });
   
-    /* ----------------------------- Formatting ----------------------------- */
+    /* ------------------------------ Alerts -------------------------------- */
   
-    function formatDate(iso) {
-      const d = new Date(iso);
-      const pad = function (n) { return String(n).padStart(2, "0"); };
-      let hours = d.getHours();
-      const suffix = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12 || 12;
-      return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear() +
-             ", " + pad(hours) + ":" + pad(d.getMinutes()) + " " + suffix;
+    function showAlert(message) {
+      formAlert.textContent = message;
+      formAlert.hidden = false;
     }
   
-    function updateCount() {
-      regCount.textContent = getRegistrations().length;
+    function hideAlert() {
+      formAlert.textContent = "";
+      formAlert.hidden = true;
+    }
+  
+    function setBusy(busy) {
+      submitBtn.setAttribute("aria-busy", busy ? "true" : "false");
+      submitBtn.disabled = busy;
+      submitBtn.textContent = busy ? "నమోదు అవుతోంది…" : SUBMIT_LABEL;
     }
   
     /* ------------------------------ Submit -------------------------------- */
   
     form.addEventListener("submit", function (event) {
       event.preventDefault();
+      hideAlert();
   
       // Run all three so every problem is shown at once.
-      const okName    = validateName();
-      const okPhone   = validatePhone();
-      const okAddress = validateAddress();
+      var okName    = validateName();
+      var okPhone   = validatePhone();
+      var okAddress = validateAddress();
   
       if (!(okName && okPhone && okAddress)) {
-        const firstInvalid = form.querySelector(".field--invalid .field__input");
+        var firstInvalid = form.querySelector(".field--invalid .field__input");
         if (firstInvalid) firstInvalid.focus();
         return;
       }
   
-      const registration = {
-        token:     nextToken(),
-        name:      nameInput.value.trim(),
-        phone:     phoneInput.value.trim(),
-        address:   addressInput.value.trim(),
-        createdAt: new Date().toISOString()
-      };
+      setBusy(true);
   
-      const list = getRegistrations();
-      list.push(registration);
-      saveRegistrations(list);
-  
-      tokenInput.value = registration.token;
-      showResult(registration);
+      apiRequest("/register", {
+        method: "POST",
+        body: {
+          name: nameInput.value.trim(),
+          phone: phoneInput.value.trim(),
+          address: addressInput.value.trim(),
+          website: honeypot ? honeypot.value : ""
+        }
+      })
+        .then(function (json) {
+          var data = json.data;
+          tokenInput.value = data.token;
+          saveReceipt(data);
+          showResult(data);
+          loadCount();
+        })
+        .catch(handleSubmitError)
+        .then(function () {
+          setBusy(false);
+        });
     });
+  
+    /**
+     * Map a WordPress REST error onto the right field, or the alert banner.
+     */
+    function handleSubmitError(error) {
+      error = error || {};
+      var code = error.code || "";
+      var data = error.data || {};
+      var message = error.message || "";
+  
+      // Duplicate number — show the devotee the token they already have.
+      if (code === "d7_duplicate_phone") {
+        var token = data.token ? " మీ టోకెన్ నంబర్: " + data.token : "";
+        setError(phoneInput, phoneError, "ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది." + token);
+        phoneInput.focus();
+        return;
+      }
+  
+      // Field-specific server rejections.
+      if (data.field === "name")    { setError(nameInput, nameError, message); nameInput.focus(); return; }
+      if (data.field === "phone")   { setError(phoneInput, phoneError, message); phoneInput.focus(); return; }
+      if (data.field === "address") { setError(addressInput, addressError, message); addressInput.focus(); return; }
+  
+      if (code === "d7_rate_limited") {
+        showAlert(message);
+        return;
+      }
+  
+      // Network failure, CORS problem, or the site being down.
+      if (!error.httpStatus) {
+        showAlert("ఇంటర్నెట్ కనెక్షన్ అందడం లేదు. కనెక్షన్ చూసుకుని మళ్లీ ప్రయత్నించండి.");
+        return;
+      }
+  
+      showAlert(message || "నమోదు పూర్తి కాలేదు. కొంత సేపటి తర్వాత మళ్లీ ప్రయత్నించండి.");
+    }
   
     /* --------------------------- Result screen ---------------------------- */
   
-    function showResult(reg) {
-      slipToken.textContent   = reg.token;
-      slipName.textContent    = reg.name;
-      slipPhone.textContent   = "+91 " + reg.phone;
-      slipAddress.textContent = reg.address;
-      slipDate.textContent    = formatDate(reg.createdAt);
+    function showResult(data, skipScroll) {
+      slipToken.textContent   = data.token;
+      slipName.textContent    = data.name;
+      slipPhone.textContent   = "+91 " + data.phone;
+      slipAddress.textContent = data.address;
+      slipDate.textContent    = data.created_display || data.created_at || "";
   
       formPanel.hidden   = true;
       resultPanel.hidden = false;
       resultPanel.setAttribute("data-enter", "");
   
-      resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-      printBtn.focus({ preventScroll: true });
+      if (!skipScroll) {
+        resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        printBtn.focus({ preventScroll: true });
+      }
     }
   
     /* ------------------------------ Actions -------------------------------- */
   
     printBtn.addEventListener("click", function () {
-      window.print(); // Browser print dialog also offers "Save as PDF".
+      window.print(); // The print dialog also offers "Save as PDF".
     });
   
+    // "Another registration" — used when one person registers for a neighbour.
     againBtn.addEventListener("click", function () {
       form.reset();
       tokenInput.value = TOKEN_PLACEHOLDER;
+      if (honeypot) honeypot.value = "";
   
       setError(nameInput, nameError, "");
       setError(phoneInput, phoneError, "");
       setError(addressInput, addressError, "");
+      hideAlert();
+      clearReceipt();
   
       resultPanel.hidden = true;
       resultPanel.removeAttribute("data-enter");
-      formPanel.hidden   = false;
+      formPanel.hidden = false;
   
-      updateCount();
       formPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       nameInput.focus({ preventScroll: true });
     });
   
-    /* ------------------------------- Init ---------------------------------- */
+    /* ------------------------------- Count ---------------------------------- */
+  
+    function loadCount() {
+      apiRequest("/stats")
+        .then(function (json) {
+          regCount.textContent = json.total;
+        })
+        .catch(function () {
+          // Keep the last known value rather than showing a broken zero.
+        });
+    }
+  
+    /* -------------------------------- Init ---------------------------------- */
   
     tokenInput.value = TOKEN_PLACEHOLDER;
-    updateCount();
+    loadCount();
+  
+    // If this browser already registered, reopen that token straight away.
+    var receipt = readReceipt();
+    if (receipt && receipt.token) {
+      showResult(receipt, true);
+    }
   })();
