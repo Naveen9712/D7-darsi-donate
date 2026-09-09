@@ -336,11 +336,66 @@
           // Keep the last known value rather than showing a broken zero.
         });
     }
+
+    /* --------------------------- Story sliders --------------------------- */
+
+    function setupCarousels() {
+      var carousels = document.querySelectorAll("[data-carousel]");
+
+      Array.prototype.forEach.call(carousels, function (carousel) {
+        var track = carousel.querySelector(".carousel__track");
+        var slides = carousel.querySelectorAll(".carousel__slide");
+        var dots = carousel.querySelector(".carousel__dots");
+        var previous = carousel.querySelector(".carousel__button--prev");
+        var next = carousel.querySelector(".carousel__button--next");
+        var current = 0;
+        var startX = 0;
+
+        function goTo(index) {
+          current = (index + slides.length) % slides.length;
+          track.style.transform = "translateX(-" + (current * 100) + "%)";
+          Array.prototype.forEach.call(slides, function (slide, slideIndex) {
+            slide.classList.toggle("is-active", slideIndex === current);
+            slide.setAttribute("aria-hidden", slideIndex === current ? "false" : "true");
+          });
+          Array.prototype.forEach.call(dots.children, function (dot, dotIndex) {
+            dot.setAttribute("aria-selected", dotIndex === current ? "true" : "false");
+          });
+        }
+
+        Array.prototype.forEach.call(slides, function (_, slideIndex) {
+          var dot = document.createElement("button");
+          dot.type = "button";
+          dot.className = "carousel__dot";
+          dot.setAttribute("role", "tab");
+          dot.setAttribute("aria-label", "చిత్రం " + (slideIndex + 1));
+          dot.addEventListener("click", function () { goTo(slideIndex); });
+          dots.appendChild(dot);
+        });
+
+        previous.addEventListener("click", function () { goTo(current - 1); });
+        next.addEventListener("click", function () { goTo(current + 1); });
+        carousel.addEventListener("keydown", function (event) {
+          if (event.key === "ArrowLeft") goTo(current - 1);
+          if (event.key === "ArrowRight") goTo(current + 1);
+        });
+        carousel.addEventListener("pointerdown", function (event) {
+          startX = event.clientX;
+        });
+        carousel.addEventListener("pointerup", function (event) {
+          var distance = event.clientX - startX;
+          if (Math.abs(distance) > 45) goTo(distance < 0 ? current + 1 : current - 1);
+        });
+
+        goTo(0);
+      });
+    }
   
     /* -------------------------------- Init ---------------------------------- */
   
     tokenInput.value = TOKEN_PLACEHOLDER;
     loadCount();
+    setupCarousels();
   
     // If this browser already registered, reopen that token straight away.
     var receipt = readReceipt();

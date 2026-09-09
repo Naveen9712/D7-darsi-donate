@@ -479,6 +479,93 @@
   .footer__line a { color: #FFD79A; text-decoration: none; border-bottom: 1px solid rgba(255, 215, 154, 0.5); }
   
   .footer__small { margin-top: 14px; font-size: var(--t-xs); color: var(--maroon-2); }
+
+  /* ------------------------- Foundation story --------------------------- */
+  .foundation-intro,
+  .story-section,
+  .closing-call { margin-top: 34px; }
+
+  .foundation-intro {
+    display: grid;
+    gap: 20px;
+    padding: 22px;
+    color: #FFF9EE;
+    background: linear-gradient(135deg, #123B42, #1F6B4E 58%, #C68A2E);
+    border-radius: var(--radius);
+    box-shadow: 0 18px 40px rgba(31, 62, 58, 0.22);
+    overflow: hidden;
+  }
+
+  .eyebrow {
+    font-family: "Baloo Tammudu 2", sans-serif;
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--marigold);
+    text-transform: uppercase;
+  }
+
+  .foundation-intro h2,
+  .section-heading h2,
+  .closing-call h2 { font-size: clamp(1.55rem, 7vw, 2.15rem); text-wrap: balance; }
+  .foundation-intro h2 { margin-top: 5px; }
+  .foundation-intro__copy > p:not(.eyebrow) { margin-top: 11px; font-size: var(--t-sm); color: rgba(255, 249, 238, 0.9); }
+  .foundation-intro__visual { margin: 0; }
+  .foundation-intro__visual img { display: block; width: 100%; height: auto; object-fit: contain; border-radius: 12px; background: rgba(255, 251, 243, 0.16); }
+  .foundation-intro__visual figcaption { margin-top: 8px; font-size: var(--t-xs); color: rgba(255, 249, 238, 0.82); }
+  .story-link { display: inline-flex; gap: 10px; align-items: center; margin-top: 18px; padding: 10px 15px; color: var(--maroon); background: var(--marigold); border-radius: 999px; font-size: var(--t-sm); font-weight: 600; text-decoration: none; }
+  .story-link:hover { background: #FFD166; }
+
+  .values-strip { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 18px; border: 1px solid rgba(198, 138, 46, 0.48); border-radius: var(--radius-sm); overflow: hidden; background: rgba(255, 251, 243, 0.76); }
+  .values-strip div { padding: 14px 12px; border-right: 1px solid rgba(198, 138, 46, 0.32); border-bottom: 1px solid rgba(198, 138, 46, 0.32); }
+  .values-strip div:nth-child(even) { border-right: 0; }
+  .values-strip div:nth-last-child(-n + 2) { border-bottom: 0; }
+  .values-strip strong { display: block; font-family: "Baloo Tammudu 2", sans-serif; font-size: var(--t-md); color: var(--green); }
+  .values-strip span { display: block; margin-top: 2px; font-size: var(--t-xs); color: var(--maroon-2); line-height: 1.45; }
+
+  .section-heading { margin-bottom: 18px; }
+  .section-heading h2 { margin-top: 4px; color: var(--maroon); }
+  .section-heading > p:last-child { margin-top: 7px; color: var(--maroon-2); font-size: var(--t-sm); }
+
+  .carousel { position: relative; padding-bottom: 44px; }
+  .carousel__viewport { overflow: hidden; border-radius: var(--radius); box-shadow: var(--shadow-lift); background: #251912; touch-action: pan-y; }
+  .carousel__track { display: flex; transform: translateX(0); transition: transform 480ms cubic-bezier(.2, .8, .3, 1); will-change: transform; }
+  .carousel__slide { flex: 0 0 100%; min-width: 0; margin: 0; }
+  .carousel__slide img { display: block; width: 100%; height: auto; max-height: 640px; object-fit: contain; background: #251912; }
+  .carousel__slide figcaption { min-height: 48px; padding: 10px 14px 12px; color: #FFF9EE; background: #213E3B; font-size: var(--t-xs); line-height: 1.45; }
+  .carousel--poster .carousel__slide img { object-fit: contain; background: #F4EFE5; }
+  .carousel--poster .carousel__slide figcaption { background: var(--maroon); }
+  .carousel__button { position: absolute; top: calc(50% - 34px); z-index: 1; width: 38px; height: 38px; display: grid; place-items: center; padding: 0; color: var(--maroon); background: rgba(255, 251, 243, 0.92); border: 0; border-radius: 50%; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.2); cursor: pointer; font-size: 1.3rem; line-height: 1; }
+  .carousel__button:hover { background: #FFF; transform: scale(1.06); }
+  .carousel__button:focus-visible { outline: 3px solid var(--sindoor); outline-offset: 2px; }
+  .carousel__button--prev { left: 10px; }
+  .carousel__button--next { right: 10px; }
+  .carousel__dots { position: absolute; bottom: 8px; left: 0; right: 0; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .carousel__dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(122, 18, 32, 0.25); cursor: pointer; }
+  .carousel__dot[aria-selected="true"] { width: 22px; border-radius: 8px; background: var(--sindoor); }
+
+  .story-section--wide { padding-top: 10px; }
+  .initiative-grid { display: grid; gap: 10px; margin-bottom: 20px; }
+  .initiative-grid article { position: relative; padding: 15px 15px 14px 48px; background: rgba(255, 251, 243, 0.78); border-left: 3px solid var(--marigold); border-radius: var(--radius-sm); }
+  .initiative-grid__number { position: absolute; left: 15px; top: 16px; color: var(--sindoor); font-family: "Baloo Tammudu 2", sans-serif; font-size: var(--t-sm); font-weight: 700; }
+  .initiative-grid h3 { font-size: var(--t-md); color: var(--green); }
+  .initiative-grid p { margin-top: 3px; color: var(--maroon-2); font-size: var(--t-xs); line-height: 1.5; }
+
+  .closing-call { display: grid; gap: 17px; padding: 24px 22px; color: #FFF9EE; background: var(--maroon); border-radius: var(--radius); box-shadow: var(--shadow-lift); }
+  .closing-call h2 { margin-top: 4px; }
+  .closing-call p:last-child { margin-top: 7px; font-size: var(--t-sm); color: rgba(255, 249, 238, 0.88); }
+  .closing-call__button { display: inline-flex; justify-content: center; gap: 10px; padding: 12px 18px; color: var(--maroon); background: var(--marigold); border-radius: 999px; font-family: "Baloo Tammudu 2", sans-serif; font-weight: 600; text-decoration: none; }
+  .closing-call__button:hover { background: #FFD166; }
+
+  .youtube-call { display: grid; gap: 16px; align-items: center; margin-top: 34px; padding: 22px; color: #FFF9EE; background: linear-gradient(135deg, #8B1826, #C7420F); border: 1px solid rgba(255, 215, 154, 0.42); border-radius: var(--radius); box-shadow: var(--shadow-lift); }
+  .youtube-call__icon { width: 58px; height: 42px; display: grid; place-items: center; }
+  .youtube-call__icon svg { display: block; width: 58px; height: auto; fill: #FFF9EE; }
+  .youtube-call__play { fill: #C7420F; }
+  .youtube-call h2 { margin-top: 4px; font-size: clamp(1.45rem, 6vw, 2rem); text-wrap: balance; }
+  .youtube-call__copy > p:last-child { margin-top: 7px; color: rgba(255, 249, 238, 0.9); font-size: var(--t-sm); }
+  .youtube-call__button { display: inline-flex; justify-content: center; align-items: center; gap: 10px; padding: 12px 17px; color: #8B1826; background: #FFF9EE; border-radius: 999px; font-family: "Baloo Tammudu 2", sans-serif; font-size: var(--t-md); font-weight: 600; text-decoration: none; box-shadow: 0 8px 20px rgba(78, 13, 20, 0.24); transition: transform 120ms ease, background-color 160ms ease; }
+  .youtube-call__button:hover { background: #FFD166; transform: translateY(-2px); }
+  .youtube-call__button:focus-visible { outline: 3px solid var(--marigold); outline-offset: 3px; }
   
   /* ------------------------ Responsive: tablet + up ----------------------- */
   @media (min-width: 620px) {
@@ -487,10 +574,18 @@
     .slip   { padding: 26px 30px 30px; }
     .result__actions { grid-template-columns: 1fr 1fr; }
     .diyas  { gap: 90px; }
+    .foundation-intro { grid-template-columns: 1.05fr 0.95fr; align-items: center; padding: 30px; }
+    .foundation-intro__visual img { height: auto; }
+    .values-strip { grid-template-columns: repeat(4, 1fr); }
+    .values-strip div, .values-strip div:nth-child(even), .values-strip div:nth-last-child(-n + 2) { border-right: 1px solid rgba(198, 138, 46, 0.32); border-bottom: 0; }
+    .values-strip div:last-child { border-right: 0; }
+    .initiative-grid { grid-template-columns: repeat(2, 1fr); }
+    .youtube-call { grid-template-columns: auto 1fr auto; padding: 26px 30px; }
+    .closing-call { grid-template-columns: 1fr auto; align-items: center; padding: 30px; }
   }
   
   @media (min-width: 1024px) {
-    .page { max-width: 760px; }
+    .page { max-width: 980px; }
     .arch__frame { padding: 40px 40px 42px; }
     .slip__row { grid-template-columns: 130px 1fr; }
   }
