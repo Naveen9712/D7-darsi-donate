@@ -135,6 +135,10 @@
     max-width: 34ch;
     margin-inline: auto;
   }
+
+  .hero-banner { margin: -10px -10px 18px; }
+  .hero-banner img { display: block; width: auto; max-width: 100%; height: auto; max-height: 720px; margin-inline: auto; object-fit: contain; border-radius: 12px; background: #173B49; }
+  .hero-banner figcaption { margin-top: 8px; font-size: var(--t-xs); color: var(--maroon-2); }
   
   /* Diyas sitting at the foot of the arch */
   .diyas {
@@ -513,6 +517,11 @@
   .foundation-intro__visual { margin: 0; }
   .foundation-intro__visual img { display: block; width: 100%; height: auto; object-fit: contain; border-radius: 12px; background: rgba(255, 251, 243, 0.16); }
   .foundation-intro__visual figcaption { margin-top: 8px; font-size: var(--t-xs); color: rgba(255, 249, 238, 0.82); }
+  .seva-intro { background: linear-gradient(135deg, #123B42, #1F6B4E 58%, #1D4E78); }
+  .seva-points { display: grid; gap: 9px; }
+  .seva-points div { padding: 12px 14px; color: var(--maroon); background: rgba(255, 251, 243, 0.95); border-radius: var(--radius-sm); }
+  .seva-points strong { display: block; font-family: "Baloo Tammudu 2", sans-serif; font-size: var(--t-md); color: var(--green); }
+  .seva-points span { display: block; margin-top: 2px; font-size: var(--t-xs); line-height: 1.5; }
   .story-link { display: inline-flex; gap: 10px; align-items: center; margin-top: 18px; padding: 10px 15px; color: var(--maroon); background: var(--marigold); border-radius: 999px; font-size: var(--t-sm); font-weight: 600; text-decoration: none; }
   .story-link:hover { background: #FFD166; }
 
@@ -531,7 +540,7 @@
   .carousel__viewport { overflow: hidden; border-radius: var(--radius); box-shadow: var(--shadow-lift); background: #251912; touch-action: pan-y; }
   .carousel__track { display: flex; transform: translateX(0); transition: transform 480ms cubic-bezier(.2, .8, .3, 1); will-change: transform; }
   .carousel__slide { flex: 0 0 100%; min-width: 0; margin: 0; }
-  .carousel__slide img { display: block; width: 100%; height: auto; max-height: 640px; object-fit: contain; background: #251912; }
+  .carousel__slide img { display: block; width: auto; max-width: 100%; height: auto; max-height: 640px; margin-inline: auto; object-fit: contain; background: #251912; }
   .carousel__slide figcaption { min-height: 48px; padding: 10px 14px 12px; color: #FFF9EE; background: #213E3B; font-size: var(--t-xs); line-height: 1.45; }
   .carousel--poster .carousel__slide img { object-fit: contain; background: #F4EFE5; }
   .carousel--poster .carousel__slide figcaption { background: var(--maroon); }
@@ -551,6 +560,12 @@
   .initiative-grid h3 { font-size: var(--t-md); color: var(--green); }
   .initiative-grid p { margin-top: 3px; color: var(--maroon-2); font-size: var(--t-xs); line-height: 1.5; }
 
+  .offer-box { margin: 0 0 20px; padding: 15px 16px; background: rgba(244, 160, 36, 0.13); border: 1.5px solid rgba(198, 138, 46, 0.62); border-radius: var(--radius-sm); }
+  .offer-box__title { font-family: "Baloo Tammudu 2", sans-serif; font-size: var(--t-md); font-weight: 600; color: var(--maroon); }
+  .offer-box ul { display: grid; gap: 5px; margin: 7px 0 0; padding: 0; list-style: none; }
+  .offer-box li { position: relative; padding-left: 20px; font-size: var(--t-sm); color: var(--maroon-2); }
+  .offer-box li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 700; }
+
   .closing-call { display: grid; gap: 17px; padding: 24px 22px; color: #FFF9EE; background: var(--maroon); border-radius: var(--radius); box-shadow: var(--shadow-lift); }
   .closing-call h2 { margin-top: 4px; }
   .closing-call p:last-child { margin-top: 7px; font-size: var(--t-sm); color: rgba(255, 249, 238, 0.88); }
@@ -558,6 +573,10 @@
   .closing-call__button:hover { background: #FFD166; }
 
   .youtube-call { display: grid; gap: 16px; align-items: center; margin-top: 34px; padding: 22px; color: #FFF9EE; background: linear-gradient(135deg, #8B1826, #C7420F); border: 1px solid rgba(255, 215, 154, 0.42); border-radius: var(--radius); box-shadow: var(--shadow-lift); }
+  .youtube-call__thumbnail { position: relative; display: block; overflow: hidden; border-radius: var(--radius-sm); background: #173B49; }
+  .youtube-call__thumbnail img { display: block; width: 100%; height: auto; object-fit: contain; }
+  .youtube-call__play-badge { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 46px; height: 34px; color: #FFF; background: #E62117; border-radius: 10px; transform: translate(-50%, -50%); box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28); }
+  .youtube-call__thumbnail:focus-visible { outline: 3px solid var(--marigold); outline-offset: 3px; }
   .youtube-call__icon { width: 58px; height: 42px; display: grid; place-items: center; }
   .youtube-call__icon svg { display: block; width: 58px; height: auto; fill: #FFF9EE; }
   .youtube-call__play { fill: #C7420F; }
@@ -580,7 +599,8 @@
     .values-strip div, .values-strip div:nth-child(even), .values-strip div:nth-last-child(-n + 2) { border-right: 1px solid rgba(198, 138, 46, 0.32); border-bottom: 0; }
     .values-strip div:last-child { border-right: 0; }
     .initiative-grid { grid-template-columns: repeat(2, 1fr); }
-    .youtube-call { grid-template-columns: auto 1fr auto; padding: 26px 30px; }
+    .seva-intro { grid-template-columns: 1fr 1fr; }
+    .youtube-call { grid-template-columns: minmax(180px, 0.7fr) auto minmax(220px, 1fr) auto; padding: 26px 30px; }
     .closing-call { grid-template-columns: 1fr auto; align-items: center; padding: 30px; }
   }
   

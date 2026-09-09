@@ -350,6 +350,7 @@
         var next = carousel.querySelector(".carousel__button--next");
         var current = 0;
         var startX = 0;
+        var autoplayTimer;
 
         function goTo(index) {
           current = (index + slides.length) % slides.length;
@@ -388,6 +389,18 @@
         });
 
         goTo(0);
+
+        if (carousel.getAttribute("data-autoplay") === "true" && slides.length > 1) {
+          autoplayTimer = window.setInterval(function () {
+            if (!document.hidden) goTo(current + 1);
+          }, 5200);
+          carousel.addEventListener("mouseenter", function () { window.clearInterval(autoplayTimer); });
+          carousel.addEventListener("mouseleave", function () {
+            autoplayTimer = window.setInterval(function () {
+              if (!document.hidden) goTo(current + 1);
+            }, 5200);
+          });
+        }
       });
     }
   
