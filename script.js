@@ -35,6 +35,9 @@
     var phoneError   = document.getElementById("phoneError");
     var addressError = document.getElementById("addressError");
     var formAlert    = document.getElementById("formAlert");
+    var promoDialog = document.getElementById("promoDialog");
+    var promoDialogClose = document.getElementById("promoDialogClose");
+    var promoDialogContinue = document.getElementById("promoDialogContinue");
   
     var slipToken   = document.getElementById("slipToken");
     var slipName    = document.getElementById("slipName");
@@ -48,6 +51,7 @@
     var regCount  = document.getElementById("regCount");
   
     var SUBMIT_LABEL = submitBtn.textContent;
+  var promoShown = false;
 
     function publicToken(token) {
       return String(token || "").replace(/^D7-GANESH-/, "D7-RAMESH-");
@@ -184,6 +188,28 @@
     addressInput.addEventListener("input", function () {
       if (this.closest(".field").classList.contains("field--invalid")) validateAddress();
     });
+
+    function maybeShowPromotion() {
+      var value = nameInput.value.trim();
+      if (promoShown || !promoDialog || value.length < 3 || /\d/.test(value)) return;
+      promoShown = true;
+      if (typeof promoDialog.showModal === "function") promoDialog.showModal();
+    }
+
+    nameInput.addEventListener("blur", maybeShowPromotion);
+
+    function closePromotion() {
+      if (promoDialog && promoDialog.open) promoDialog.close();
+      nameInput.focus({ preventScroll: true });
+    }
+
+    if (promoDialogClose) promoDialogClose.addEventListener("click", closePromotion);
+    if (promoDialogContinue) promoDialogContinue.addEventListener("click", closePromotion);
+    if (promoDialog) {
+      promoDialog.addEventListener("click", function (event) {
+        if (event.target === promoDialog) closePromotion();
+      });
+    }
   
     tokenInput.addEventListener("focus", function () {
       this.blur();
@@ -312,6 +338,7 @@
     // "Another registration" — used when one person registers for a neighbour.
     againBtn.addEventListener("click", function () {
       form.reset();
+      promoShown = false;
       tokenInput.value = TOKEN_PLACEHOLDER;
       if (honeypot) honeypot.value = "";
   
