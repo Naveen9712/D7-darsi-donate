@@ -411,12 +411,12 @@
         if (carousel.getAttribute("data-autoplay") === "true" && slides.length > 1) {
           autoplayTimer = window.setInterval(function () {
             if (!document.hidden) goTo(current + 1);
-          }, 5200);
+          }, 2000);
           carousel.addEventListener("mouseenter", function () { window.clearInterval(autoplayTimer); });
           carousel.addEventListener("mouseleave", function () {
             autoplayTimer = window.setInterval(function () {
               if (!document.hidden) goTo(current + 1);
-            }, 5200);
+            }, 2000);
           });
         }
       });
