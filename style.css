@@ -495,7 +495,7 @@ a:hover { color: var(--kumkum); }
 }
 .assurance__inner {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
   padding-block: 22px;
 }
@@ -579,19 +579,28 @@ a:hover { color: var(--kumkum); }
 }
 .carousel__track {
   display: flex;
+  align-items: flex-start;
   transition: transform 0.5s var(--ease);
   will-change: transform;
 }
 .carousel__slide {
   flex: 0 0 100%;
+  width: 100%;
   min-width: 100%;
+  height: auto;
   margin: 0;
+  align-self: flex-start;
+  background: var(--sand-deep);
 }
 .carousel__slide img {
+  display: block;
   width: 100%;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center;
   background: var(--sand-deep);
+  vertical-align: bottom;
 }
 .carousel__slide figcaption {
   padding: 18px clamp(18px, 3vw, 30px) 22px;

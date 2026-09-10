@@ -48,7 +48,6 @@
     var submitBtn = document.getElementById("submitBtn");
     var printBtn  = document.getElementById("printBtn");
     var againBtn  = document.getElementById("againBtn");
-    var regCount  = document.getElementById("regCount");
   
     var SUBMIT_LABEL = submitBtn.textContent;
   var promoShown = false;
@@ -266,7 +265,6 @@
           tokenInput.value = publicToken(data.token);
           saveReceipt(data);
           showResult(data);
-          loadCount();
         })
         .catch(handleSubmitError)
         .then(function () {
@@ -356,18 +354,6 @@
       nameInput.focus({ preventScroll: true });
     });
   
-    /* ------------------------------- Count ---------------------------------- */
-  
-    function loadCount() {
-      apiRequest("/stats")
-        .then(function (json) {
-          regCount.textContent = json.total;
-        })
-        .catch(function () {
-          // Keep the last known value rather than showing a broken zero.
-        });
-    }
-
     /* --------------------------- Story sliders --------------------------- */
 
     function setupCarousels() {
@@ -452,7 +438,6 @@
     /* -------------------------------- Init ---------------------------------- */
   
     tokenInput.value = TOKEN_PLACEHOLDER;
-    loadCount();
     setupCarousels();
   
     // If this browser already registered, reopen that token straight away.
