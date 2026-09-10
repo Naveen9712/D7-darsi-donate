@@ -52,6 +52,10 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 				'https://pncreators.com',
 				'https://www.pncreators.com',
 				'https://d7darsidonate.onrender.com',
+				'http://localhost:5500',
+				'http://127.0.0.1:5500',
+				'http://localhost:8080',
+				'http://127.0.0.1:8080',
 			),
 
 			/**
@@ -710,17 +714,64 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 /**
  * Admin-only endpoints.
  *
- * The shared key is accepted from the X-D7-Admin-Key header only. Query-string
- * keys end up in access logs, browser history and Referer headers, so that
- * route is deliberately not supported.
+ * The shared key is accepted from (in order):
+ *   1) X-D7-Admin-Key request header (wp-admin, curl, hosts that forward it),
+ *   2) ?admin_key= query string,
+ *   3) admin_key POST field (form-encoded writes avoid CORS preflight).
+ *
+ * The public /admin/ page MUST use (2) or (3), not the custom header.
+ * This host answers OPTIONS before WordPress, with Allow-Headers that omit
+ * X-D7-Admin-Key, so a browser preflight would fail even with a valid key.
+ *
+ * Values are trimmed before comparison so a copy/pasted key with a trailing
+ * space still works.
  */
 if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
 	function d7_ganesh_admin_permission( $request = null ) {
 		$config = d7_ganesh_config();
 
-		if ( ! empty( $config['admin_api_key'] ) && ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
-			$provided_key = (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] );
-			if ( hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
+		if ( ! empty( $config['admin_api_key'] ) ) {
+			$provided_key = '';
+
+			// 1) X-D7-Admin-Key header (some hosts expose it under another key).
+			foreach ( array( 'HTTP_X_D7_ADMIN_KEY', 'HTTP_X_D7_ADMINKEY', 'HTTP_X_D7ADMINKEY', 'HTTP_X_ADMIN_KEY' ) as $server_key ) {
+				if ( ! empty( $_SERVER[ $server_key ] ) ) {
+					$provided_key = (string) wp_unslash( $_SERVER[ $server_key ] );
+					break;
+				}
+			}
+
+			// 2) getallheaders() fallback for servers that don't populate $_SERVER.
+			if ( '' === $provided_key && function_exists( 'getallheaders' ) ) {
+				$headers = getallheaders();
+				if ( is_array( $headers ) ) {
+					foreach ( $headers as $name => $value ) {
+						if ( 'x-d7-admin-key' === strtolower( (string) $name ) ) {
+							$provided_key = (string) $value;
+							break;
+						}
+					}
+				}
+			}
+
+			// 3) Query string / form-body fallback (?admin_key=... or POST
+			//    admin_key=...) for hosts/proxies that strip custom headers.
+			//    Note: $request->get_param() merges query + body, so one read
+			//    covers both transports.
+			if ( '' === $provided_key && null !== $request && $request instanceof WP_REST_Request ) {
+				$from_param = $request->get_param( 'admin_key' );
+				if ( null !== $from_param && '' !== $from_param ) {
+					$provided_key = (string) $from_param;
+				}
+			}
+			if ( '' === $provided_key && isset( $_GET['admin_key'] ) && '' !== $_GET['admin_key'] ) {
+				$provided_key = (string) wp_unslash( $_GET['admin_key'] );
+			}
+			if ( '' === $provided_key && isset( $_POST['admin_key'] ) && '' !== $_POST['admin_key'] ) {
+				$provided_key = (string) wp_unslash( $_POST['admin_key'] );
+			}
+
+			if ( '' !== trim( $provided_key ) && hash_equals( (string) $config['admin_api_key'], trim( $provided_key ) ) ) {
 				return true;
 			}
 		}
@@ -778,10 +829,16 @@ add_action( 'rest_api_init', function () {
 		),
 	) );
 
-	// ---- GET /stats (public, count only) ---------------------------------
+	// ---- GET /stats ------------------------------------------------------
+	// Public callers get { total } only. Authorised callers (admin key or WP
+	// admin session) get the full breakdown — this keeps older frontends that
+	// call GET /stats for the dashboard working after login.
 	register_rest_route( 'd7-ganesh/v1', '/stats', array(
 		'methods'             => WP_REST_Server::READABLE,
-		'callback'            => function () {
+		'callback'            => function ( WP_REST_Request $request ) {
+			if ( true === d7_ganesh_admin_permission( $request ) ) {
+				return rest_ensure_response( d7_ganesh_get_counts() );
+			}
 			global $wpdb;
 			$table = d7_ganesh_table();
 			return rest_ensure_response( array(
@@ -1699,7 +1756,14 @@ add_action( 'init', function () {
 	}
 
 	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-	if ( false === strpos( $uri, '/wp-json/d7-ganesh/' ) ) {
+
+	// Matches pretty permalinks and the ?rest_route= fallback used when the
+	// site is on Plain permalinks.
+	$is_d7 = ( false !== strpos( $uri, '/wp-json/d7-ganesh/' ) )
+		|| ( false !== strpos( $uri, 'rest_route=/d7-ganesh/' ) )
+		|| ( false !== strpos( $uri, 'rest_route=%2Fd7-ganesh%2F' ) );
+
+	if ( ! $is_d7 ) {
 		return;
 	}
 

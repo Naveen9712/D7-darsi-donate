@@ -42,15 +42,26 @@
     try { sessionStorage.removeItem(KEY_STORAGE); } catch (error) {}
   }
 
-  function apiUrl(path) {
-    return new URL(API_BASE + path, window.location.href);
+  function apiUrl(path, query) {
+    var url = new URL(API_BASE + path, window.location.href);
+    if (query) {
+      Object.keys(query).forEach(function (name) {
+        var value = query[name];
+        if (value !== undefined && value !== null && value !== "") url.searchParams.set(name, value);
+      });
+    }
+    return url;
   }
 
-  function authHeaders(extra) {
-    var headers = extra || {};
-    var key = getKey();
-    if (key) headers["X-D7-Admin-Key"] = key;
-    return headers;
+  function withKeyFallback(path, key) {
+    // Do not send X-D7-Admin-Key from the browser. pncreators.com answers
+    // OPTIONS with Allow-Headers: Authorization, Content-Type, X-Requested-With
+    // (the PHP snippet never sees that preflight), so a custom header is
+    // blocked by CORS even when the key is correct. admin_key on the query
+    // string or POST body is a simple request and reaches WordPress.
+    if (!key) return { path: path, query: null };
+    if (path.indexOf("admin_key=") !== -1) return { path: path, query: null };
+    return { path: path, query: { admin_key: key } };
   }
 
   /* ------------------------------ transport ----------------------------- */
@@ -68,19 +79,21 @@
 
   function request(path) {
     var key = getKey();
-    return fetch(apiUrl(path).toString(), {
-      credentials: key ? "omit" : "include",
-      headers: authHeaders()
+    var routed = withKeyFallback(path, key);
+    return fetch(apiUrl(routed.path, routed.query).toString(), {
+      credentials: "omit"
     }).then(handleResponse);
   }
 
   function post(path, body) {
     var key = getKey();
+    var payload = body || {};
+    if (key && !payload.admin_key) payload.admin_key = key;
     return fetch(apiUrl(path).toString(), {
       method: "POST",
-      credentials: key ? "omit" : "include",
-      headers: authHeaders({ "Content-Type": "application/x-www-form-urlencoded" }),
-      body: new URLSearchParams(body || {}).toString()
+      credentials: "omit",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(payload).toString()
     }).then(handleResponse);
   }
 
@@ -312,9 +325,17 @@
     request("/registrations?per_page=1").then(function () {
       adminKey.value = "";
       enterDashboard();
-    }).catch(function () {
+    }).catch(function (error) {
       clearKey();
-      rejectAccess("Access denied. Check the administrator key.");
+      if (error && error.status === 401) {
+        rejectAccess("Access denied. Check the administrator key.");
+        return;
+      }
+      if (error && error.status === 403) {
+        rejectAccess("Access denied. This key is not allowed to view registrations.");
+        return;
+      }
+      rejectAccess((error && error.message) || "Could not reach the registrations API. Check your connection and try again.");
     });
   });
 
@@ -327,9 +348,9 @@
 
   exportBtn.addEventListener("click", function () {
     var key = getKey();
-    fetch(apiUrl("/export").toString(), {
-      credentials: key ? "omit" : "include",
-      headers: authHeaders()
+    var routed = withKeyFallback("/export", key);
+    fetch(apiUrl(routed.path, routed.query).toString(), {
+      credentials: "omit"
     }).then(function (response) {
       if (!response.ok) {
         var error = new Error("Export failed");
