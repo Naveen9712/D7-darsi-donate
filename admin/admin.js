@@ -194,7 +194,7 @@
   function setStatus(row, status) {
     return post("/registrations/" + row.id + "/status", { status: status })
       .then(function () {
-        showNotice(row.token + " marked as " + status + ".");
+        showNotice(tokenLabel(row) + " marked as " + status + ".");
         return loadDashboard();
       })
       .catch(handleDashboardError);
@@ -202,7 +202,7 @@
 
   function deleteRow(row) {
     var confirmed = window.confirm(
-      "Delete " + row.token + " (" + row.name + ")?\n\n" +
+      "Delete " + tokenLabel(row) + " (" + row.name + ")?\n\n" +
       "This cannot be undone. The phone number becomes free to register again, " +
       "but this token number will never be reissued."
     );
@@ -210,13 +210,17 @@
 
     return post("/registrations/" + row.id + "/delete", {})
       .then(function () {
-        showNotice(row.token + " deleted.");
+        showNotice(tokenLabel(row) + " deleted.");
         return loadDashboard();
       })
       .catch(handleDashboardError);
   }
 
   /* -------------------------------- table --------------------------------- */
+
+  function tokenLabel(row) {
+    return row.token_display || row.token || "-";
+  }
 
   function createRow(row) {
     var tr = document.createElement("tr");
@@ -231,6 +235,12 @@
     });
 
     tr.children[0].firstChild.textContent = row.token || "-";
+    if (row.old_token) {
+      var old = document.createElement("span");
+      old.className = "token-old";
+      old.textContent = "(Old: " + row.old_token + ")";
+      tr.children[0].appendChild(old);
+    }
     tr.children[1].textContent = row.name || "-";
     tr.children[2].textContent = row.phone || "-";
     tr.children[3].textContent = row.address || "-";
@@ -287,12 +297,15 @@
 
   function openDetails(row) {
     currentRow = row;
-    document.getElementById("detailToken").textContent = row.token || "Registration";
+    document.getElementById("detailToken").textContent = tokenLabel(row);
 
     var fields = [
       ["Name", row.name],
       ["Phone", row.phone],
       ["Address", row.address],
+      ["Token", row.token],
+      ["Original token", row.old_token],
+      ["Gift", row.is_special ? "Special idol" : "Standard idol"],
       ["Registered", row.created_display || row.created_at],
       ["Status", row.status]
     ];
@@ -300,6 +313,7 @@
     var detailList = document.getElementById("detailList");
     detailList.innerHTML = "";
     fields.forEach(function (field) {
+      if (field[0] === "Original token" && !field[1]) return;
       var dt = document.createElement("dt");
       var dd = document.createElement("dd");
       dt.textContent = field[0];
