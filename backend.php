@@ -14,9 +14,10 @@
  * Contents:
  *   SECTION 0 — Configuration (edit this part)
  *   SECTION 1 — Database table + helpers
- *   SECTION 2 — REST API
- *   SECTION 3 — Admin dashboard
- *   SECTION 4 — CORS (only active if you list front-end origins in SECTION 0)
+ *   SECTION 2 — Legacy token re-issue (one-time migration)
+ *   SECTION 3 — REST API
+ *   SECTION 4 — Admin dashboard
+ *   SECTION 5 — CORS
  *
  * NOTE: do NOT paste the opening <?php tag into Code Snippets.
  * =============================================================================
@@ -39,13 +40,13 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 			'special_limit' => 200,
 
 			// Max submissions allowed per IP address per hour.
-			'rate_limit' => 5,
+			// Indian mobile carriers use CGNAT, so many devotees can share one public
+			// IP. Keep this generous or a whole neighbourhood gets locked out.
+			'rate_limit' => 40,
 
 			/**
 			 * Front-end origins allowed to call the API from a browser.
-			 * No trailing slash. Never use '*'.
-			 *
-			 * After you deploy the form (Render etc.), add that exact origin too.
+			 * No trailing slash. Never use '*'. Never list localhost in production.
 			 */
 			'allowed_origins' => array(
 				'https://pncreators.com',
@@ -63,18 +64,18 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 			'reveal_token_on_duplicate' => true,
 
 			/**
-			 * Optional key for the standalone /admin/ page.
-			 * Send only as the X-D7-Admin-Key header — never as a query string.
-			 * Rotate this value if it has ever been committed or logged.
-			 * Leave empty to use a WordPress administrator session only.
+			 * Key for the standalone /admin/ page.
+			 * Send ONLY as the X-D7-Admin-Key header — never as a query string.
+			 * Rotate immediately if this value is ever pasted into chat, email,
+			 * a screenshot, a support ticket or a git commit.
 			 */
-			'admin_api_key' => 'f92f8f9f0d5494570f364ebdda99ba2772fc7bef22d3d86618c091f6750415f7',
+			'admin_api_key' => 'Upsc@365',
 		);
 	}
 }
 
 if ( ! defined( 'D7_GANESH_DB_VERSION' ) ) {
-	define( 'D7_GANESH_DB_VERSION', '1.3.0' );
+	define( 'D7_GANESH_DB_VERSION', '1.4.0' );
 }
 
 
@@ -102,6 +103,10 @@ if ( ! function_exists( 'd7_ganesh_table' ) ) {
  * The UNIQUE KEY on `phone` is the real duplicate guard — the PHP check in the
  * REST handler only exists to return a friendly message. Two simultaneous
  * requests with the same number cannot both be written.
+ *
+ * `old_token` holds the original sequential token (D7-RAMESH-0009) for rows
+ * that were re-issued a random token. It is deliberately NOT unique, because
+ * every new registration stores an empty string there.
  */
 if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 	function d7_ganesh_install_table() {
@@ -115,6 +120,7 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 		$sql = "CREATE TABLE {$table} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			token varchar(32) NOT NULL DEFAULT '',
+			old_token varchar(32) NOT NULL DEFAULT '',
 			name varchar(120) NOT NULL DEFAULT '',
 			phone varchar(15) NOT NULL DEFAULT '',
 			address text NOT NULL,
@@ -125,6 +131,7 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 			PRIMARY KEY  (id),
 			UNIQUE KEY phone (phone),
 			UNIQUE KEY token (token),
+			KEY old_token (old_token),
 			KEY status (status),
 			KEY is_special (is_special),
 			KEY created_at (created_at)
@@ -133,7 +140,7 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
 
-		// Migrate stored tokens without changing already-issued values.
+		// Normalise the old brand prefix without changing any numeric suffix.
 		$wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET token = REPLACE(token, %s, %s) WHERE token LIKE %s",
@@ -146,7 +153,8 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 		$config = d7_ganesh_config();
 		$limit  = max( 0, (int) $config['special_limit'] );
 
-		// One-time backfill only. Later version bumps must not rewrite is_special.
+		// One-time backfill only. Later version bumps must never rewrite is_special,
+		// or people already promised a special idol would silently lose it.
 		if ( ! get_option( 'd7_ganesh_special_backfill_done' ) ) {
 			$wpdb->query(
 				$wpdb->prepare(
@@ -158,11 +166,14 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 		}
 
 		update_option( 'd7_ganesh_db_version', D7_GANESH_DB_VERSION );
+
+		// Re-issue random tokens to any rows still carrying a sequential one.
+		d7_ganesh_reissue_legacy_tokens();
 	}
 }
 
 /**
- * Create the table on first request (front end, REST, or admin), then skip.
+ * Create/upgrade the table on first request (front end, REST, or admin).
  */
 add_action( 'init', function () {
 	if ( get_option( 'd7_ganesh_db_version' ) !== D7_GANESH_DB_VERSION ) {
@@ -173,6 +184,9 @@ add_action( 'init', function () {
 /**
  * Random token suffix. Letters and digits, omitting 0/O/1/I/L so a token
  * like D7-RAMESH-X7K4 is easy to read aloud at the collection counter.
+ *
+ * Because 0 and 1 are excluded, a random suffix can never look like a
+ * zero-padded sequence number — the migration in SECTION 2 relies on this.
  *
  * @param int $length
  * @return string
@@ -192,7 +206,8 @@ if ( ! function_exists( 'd7_ganesh_random_suffix' ) ) {
 }
 
 /**
- * Issue a unique public token that does not encode the registration count.
+ * Build a token. Uniqueness is enforced by the UNIQUE index on `token`;
+ * callers that insert should retry on a clash.
  *
  * @param int $id Unused; kept so older call sites stay valid.
  * @return string e.g. D7-RAMESH-X7K4
@@ -201,6 +216,45 @@ if ( ! function_exists( 'd7_ganesh_build_token' ) ) {
 	function d7_ganesh_build_token( $id = 0 ) {
 		$config = d7_ganesh_config();
 		return $config['token_prefix'] . d7_ganesh_random_suffix( 4 );
+	}
+}
+
+/**
+ * Build a token that is not already used as a current OR historical token.
+ *
+ * Used by the migration, which writes tokens with UPDATE rather than INSERT
+ * and so cannot lean on insert-retry. Checking `old_token` too means a
+ * volunteer searching an old slip number can never land on two rows.
+ *
+ * @return string Empty string if no free token was found (practically never).
+ */
+if ( ! function_exists( 'd7_ganesh_unique_token' ) ) {
+	function d7_ganesh_unique_token() {
+		global $wpdb;
+
+		$config = d7_ganesh_config();
+		$table  = d7_ganesh_table();
+
+		$attempts = array_fill( 0, 40, 4 );          // 4-character suffix
+		$attempts = array_merge( $attempts, array_fill( 0, 20, 6 ) ); // then widen
+
+		foreach ( $attempts as $length ) {
+			$token = $config['token_prefix'] . d7_ganesh_random_suffix( $length );
+
+			$taken = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM {$table} WHERE token = %s OR old_token = %s LIMIT 1",
+					$token,
+					$token
+				)
+			);
+
+			if ( ! $taken ) {
+				return $token;
+			}
+		}
+
+		return '';
 	}
 }
 
@@ -225,9 +279,8 @@ if ( ! function_exists( 'd7_ganesh_row_is_special' ) ) {
 }
 
 /**
- * Return the current public token format while preserving its numeric suffix.
- * This keeps legacy rows created with the old prefix consistent in API
- * responses without changing the database id or registrant name.
+ * Return the current public token format while preserving its suffix.
+ * Keeps any row created under the old brand prefix consistent in output.
  *
  * @param string $token Stored token value.
  * @return string Current public token value.
@@ -242,6 +295,34 @@ if ( ! function_exists( 'd7_ganesh_public_token' ) ) {
 		}
 
 		return $token;
+	}
+}
+
+/**
+ * The token as it should be shown to staff: the current random token, with the
+ * original sequential one in brackets when the row was re-issued.
+ *
+ *   D7-RAMESH-X7K4 (Old: D7-RAMESH-0009)
+ *   D7-RAMESH-M4QP                         <- registered after the change
+ *
+ * @param array $row
+ * @return string
+ */
+if ( ! function_exists( 'd7_ganesh_display_token' ) ) {
+	function d7_ganesh_display_token( $row ) {
+		$new = d7_ganesh_public_token( isset( $row['token'] ) ? $row['token'] : '' );
+		$old = isset( $row['old_token'] ) ? trim( (string) $row['old_token'] ) : '';
+
+		if ( '' === $old ) {
+			return $new;
+		}
+
+		$old = d7_ganesh_public_token( $old );
+		if ( $old === $new ) {
+			return $new;
+		}
+
+		return $new . ' (Old: ' . $old . ')';
 	}
 }
 
@@ -284,6 +365,13 @@ if ( ! function_exists( 'd7_ganesh_find_by_phone' ) ) {
 /**
  * Shared query used by both the admin screen and the REST list endpoint.
  *
+ * Search covers name, phone, the current token and the original token, so a
+ * devotee holding an old printed slip can still be found by their old number.
+ *
+ * All placeholders are collected and bound in a single prepare() call. Building
+ * a pre-prepared WHERE string and re-preparing it would let the % characters in
+ * a LIKE pattern be re-read as placeholders, which silently empties the query.
+ *
  * @param array $args search, status, per_page, page.
  * @return array { rows: array, total: int }
  */
@@ -307,9 +395,9 @@ if ( ! function_exists( 'd7_ganesh_query_registrations' ) ) {
 		$where_args = array();
 
 		if ( '' !== trim( $args['search'] ) ) {
-			$like         = '%' . $wpdb->esc_like( trim( $args['search'] ) ) . '%';
-			$where_sql   .= ' AND ( name LIKE %s OR phone LIKE %s OR token LIKE %s )';
-			array_push( $where_args, $like, $like, $like );
+			$like       = '%' . $wpdb->esc_like( trim( $args['search'] ) ) . '%';
+			$where_sql .= ' AND ( name LIKE %s OR phone LIKE %s OR token LIKE %s OR old_token LIKE %s )';
+			array_push( $where_args, $like, $like, $like, $like );
 		}
 
 		if ( in_array( $args['status'], array( 'pending', 'collected' ), true ) ) {
@@ -357,26 +445,169 @@ if ( ! function_exists( 'd7_ganesh_get_counts' ) ) {
 				$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE DATE(created_at) = %s", $today )
 			),
 			'special'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE is_special = 1" ),
+			'reissued'  => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE old_token <> ''" ),
 		);
 	}
 }
 
 
 /* =============================================================================
- * SECTION 2 — REST API
+ * SECTION 2 — LEGACY TOKEN RE-ISSUE (one-time migration)
+ *
+ * Early registrations were issued sequential tokens (D7-RAMESH-0009) which leak
+ * the registration count and are trivially guessable. This migration gives every
+ * such row a fresh random token and keeps the original in `old_token`, so the
+ * admin screen can show:
+ *
+ *     D7-RAMESH-X7K4 (Old: D7-RAMESH-0009)
+ *
+ * Nothing else on the row is touched — name, phone, address, status, created_at
+ * and is_special are all left exactly as they are.
+ * ========================================================================== */
+
+/**
+ * Is this token a legacy sequential one?
+ *
+ * Two independent signals, either of which is conclusive:
+ *
+ *   1. The suffix contains 0 or 1. The random alphabet excludes both, so a
+ *      random token can never contain them.
+ *   2. The suffix, read as a number, equals the row id — which is exactly how
+ *      the old sequential tokens were built.
+ *
+ * A random suffix of pure digits (e.g. X7K4 -> 2345) is possible but would also
+ * have to coincide with its own row id to be misread, which is why both tests
+ * are required rather than "suffix is numeric".
+ *
+ * @param string $token
+ * @param int    $id
+ * @return bool
+ */
+if ( ! function_exists( 'd7_ganesh_is_legacy_token' ) ) {
+	function d7_ganesh_is_legacy_token( $token, $id ) {
+		$token = (string) $token;
+		$pos   = strrpos( $token, '-' );
+
+		if ( false === $pos ) {
+			return false;
+		}
+
+		$suffix = substr( $token, $pos + 1 );
+
+		if ( '' === $suffix || ! ctype_digit( $suffix ) ) {
+			return false;
+		}
+
+		if ( false !== strpos( $suffix, '0' ) || false !== strpos( $suffix, '1' ) ) {
+			return true;
+		}
+
+		return (int) $suffix === (int) $id;
+	}
+}
+
+/**
+ * Re-issue random tokens to every row that still has a sequential one.
+ *
+ * Safe to call more than once:
+ *   - a completion flag short-circuits it after the first successful pass;
+ *   - a transient lock stops two concurrent requests running it together;
+ *   - the UPDATE carries `AND old_token = ''`, so a row can never have its
+ *     original token overwritten by an already-re-issued value.
+ *
+ * @return int Number of rows re-issued in this pass.
+ */
+if ( ! function_exists( 'd7_ganesh_reissue_legacy_tokens' ) ) {
+	function d7_ganesh_reissue_legacy_tokens() {
+		global $wpdb;
+
+		if ( get_option( 'd7_ganesh_token_reissue_done' ) ) {
+			return 0;
+		}
+
+		// Cheap advisory lock. Another request is already migrating; let it finish.
+		if ( get_transient( 'd7_ganesh_reissue_lock' ) ) {
+			return 0;
+		}
+		set_transient( 'd7_ganesh_reissue_lock', 1, 5 * MINUTE_IN_SECONDS );
+
+		$table = d7_ganesh_table();
+		$rows  = $wpdb->get_results(
+			"SELECT id, token, old_token FROM {$table} ORDER BY id ASC",
+			ARRAY_A
+		);
+
+		$done   = 0;
+		$failed = 0;
+
+		if ( $rows ) {
+			foreach ( $rows as $row ) {
+
+				// Already re-issued in an earlier pass.
+				if ( '' !== trim( (string) $row['old_token'] ) ) {
+					continue;
+				}
+
+				if ( ! d7_ganesh_is_legacy_token( $row['token'], $row['id'] ) ) {
+					continue;
+				}
+
+				$new_token = d7_ganesh_unique_token();
+				if ( '' === $new_token ) {
+					$failed++;
+					continue;
+				}
+
+				$updated = $wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$table} SET token = %s, old_token = %s WHERE id = %d AND old_token = ''",
+						$new_token,
+						$row['token'],
+						(int) $row['id']
+					)
+				);
+
+				if ( $updated ) {
+					$done++;
+				} else {
+					$failed++;
+				}
+			}
+		}
+
+		delete_transient( 'd7_ganesh_reissue_lock' );
+
+		// Only mark complete when nothing was left behind, so a partial run
+		// (token clash, dropped connection) is retried on the next request.
+		if ( 0 === $failed ) {
+			update_option( 'd7_ganesh_token_reissue_done', '1' );
+			update_option( 'd7_ganesh_token_reissue_count', (int) get_option( 'd7_ganesh_token_reissue_count', 0 ) + $done );
+		}
+
+		return $done;
+	}
+}
+
+
+/* =============================================================================
+ * SECTION 3 — REST API
  *
  * Routes (namespace d7-ganesh/v1):
- *   POST /register              public  — create a registration, returns token
- *   GET  /stats                 public  — total count only
- *   GET  /registrations         admin   — paginated list + search
- *   GET  /registrations/<id>    admin   — one record
+ *   POST /register                     public  — create a registration
+ *   GET  /stats                        public  — total count only
+ *   GET  /admin-stats                  admin   — dashboard counts
+ *   GET  /registrations                admin   — paginated list + search
+ *   GET  /registrations/<id>           admin   — one record
+ *   POST /registrations/<id>/status    admin   — pending / collected
+ *   POST /registrations/<id>/delete    admin   — delete
+ *   GET  /export                       admin   — CSV download
  * ========================================================================== */
 
 /* ------------------------------------------------------------- validation */
 
 /**
- * Validate a name: letters in any script (so Telugu works), marks, spaces,
- * apostrophes, hyphens and dots. Digits are rejected.
+ * Validate a name: at least 3 characters, at most 60, no digits.
+ * Any script is accepted so Telugu names pass.
  */
 if ( ! function_exists( 'd7_ganesh_valid_name' ) ) {
 	function d7_ganesh_valid_name( $value ) {
@@ -384,7 +615,6 @@ if ( ! function_exists( 'd7_ganesh_valid_name' ) ) {
 		if ( mb_strlen( $value ) < 3 || mb_strlen( $value ) > 60 ) {
 			return false;
 		}
-		// Same rule as the form: any script (Telugu included), no digits.
 		return ! preg_match( '/\d/u', $value );
 	}
 }
@@ -420,7 +650,9 @@ if ( ! function_exists( 'd7_ganesh_client_ip' ) ) {
 }
 
 /**
- * Per-IP rate limit backed by transients.
+ * Per-IP rate limit backed by transients. Only successful registrations are
+ * counted, so a devotee fixing typos cannot exhaust the quota for their whole
+ * CGNAT block.
  *
  * @return bool true when the request is allowed.
  */
@@ -429,15 +661,16 @@ if ( ! function_exists( 'd7_ganesh_rate_limit_ok' ) ) {
 		$config = d7_ganesh_config();
 		$max    = (int) $config['rate_limit'];
 
+		return ( (int) get_transient( 'd7g_rl_' . md5( $ip ) ) ) < $max;
+	}
+}
+
+/** Record one successful registration against this IP. */
+if ( ! function_exists( 'd7_ganesh_rate_limit_hit' ) ) {
+	function d7_ganesh_rate_limit_hit( $ip ) {
 		$key   = 'd7g_rl_' . md5( $ip );
 		$count = (int) get_transient( $key );
-
-		if ( $count >= $max ) {
-			return false;
-		}
-
 		set_transient( $key, $count + 1, HOUR_IN_SECONDS );
-		return true;
 	}
 }
 
@@ -446,8 +679,12 @@ if ( ! function_exists( 'd7_ganesh_rate_limit_ok' ) ) {
  */
 if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 	function d7_ganesh_format_row( $row, $include_private = false ) {
+		$old = isset( $row['old_token'] ) ? trim( (string) $row['old_token'] ) : '';
+
 		$out = array(
 			'token'           => d7_ganesh_public_token( $row['token'] ),
+			'old_token'       => '' === $old ? '' : d7_ganesh_public_token( $old ),
+			'token_display'   => d7_ganesh_display_token( $row ),
 			'name'            => $row['name'],
 			'phone'           => $row['phone'],
 			'address'         => $row['address'],
@@ -457,11 +694,11 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 		);
 
 		if ( $include_private ) {
-			$is_special = d7_ganesh_row_is_special( $row );
-			$out['id']         = (int) $row['id'];
+			$is_special         = d7_ganesh_row_is_special( $row );
+			$out['id']          = (int) $row['id'];
 			$out['ip_address']  = $row['ip_address'];
-			$out['is_special'] = $is_special;
-			$out['gift']       = $is_special ? 'special' : 'standard';
+			$out['is_special']  = $is_special;
+			$out['gift']        = $is_special ? 'special' : 'standard';
 		}
 
 		return $out;
@@ -471,18 +708,22 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 /* ------------------------------------------------------------- permission */
 
 /**
- * Admin-only endpoints. Logged out gets 401, logged-in non-admin gets 403.
+ * Admin-only endpoints.
+ *
+ * The shared key is accepted from the X-D7-Admin-Key header only. Query-string
+ * keys end up in access logs, browser history and Referer headers, so that
+ * route is deliberately not supported.
  */
-	if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
-		function d7_ganesh_admin_permission( $request = null ) {
-			$config = d7_ganesh_config();
+if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
+	function d7_ganesh_admin_permission( $request = null ) {
+		$config = d7_ganesh_config();
 
-			if ( ! empty( $config['admin_api_key'] ) && ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
-				$provided_key = (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] );
-				if ( hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
-					return true;
-				}
+		if ( ! empty( $config['admin_api_key'] ) && ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
+			$provided_key = (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] );
+			if ( hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
+				return true;
 			}
+		}
 
 		if ( ! is_user_logged_in() ) {
 			return new WP_Error(
@@ -491,6 +732,7 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 				array( 'status' => 401 )
 			);
 		}
+
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return new WP_Error(
 				'rest_forbidden',
@@ -498,6 +740,7 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 				array( 'status' => 403 )
 			);
 		}
+
 		return true;
 	}
 }
@@ -548,7 +791,7 @@ add_action( 'rest_api_init', function () {
 		'permission_callback' => '__return_true',
 	) );
 
-	// ---- GET /admin-stats (admin, dashboard counts) ----------------------
+	// ---- GET /admin-stats (admin) ----------------------------------------
 	register_rest_route( 'd7-ganesh/v1', '/admin-stats', array(
 		'methods'             => WP_REST_Server::READABLE,
 		'callback'            => function () {
@@ -579,6 +822,35 @@ add_action( 'rest_api_init', function () {
 			'id' => array( 'sanitize_callback' => 'absint' ),
 		),
 	) );
+
+	// ---- Write routes (admin). POST + form-encoded to avoid preflight. ----
+	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/status', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'd7_ganesh_rest_update_status',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+		'args'                => array(
+			'id'     => array( 'sanitize_callback' => 'absint' ),
+			'status' => array(
+				'required'          => true,
+				'sanitize_callback' => 'sanitize_key',
+			),
+		),
+	) );
+
+	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/delete', array(
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'd7_ganesh_rest_delete',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+		'args'                => array(
+			'id' => array( 'sanitize_callback' => 'absint' ),
+		),
+	) );
+
+	register_rest_route( 'd7-ganesh/v1', '/export', array(
+		'methods'             => WP_REST_Server::READABLE,
+		'callback'            => 'd7_ganesh_rest_export',
+		'permission_callback' => 'd7_ganesh_admin_permission',
+	) );
 } );
 
 /* --------------------------------------------------------------- handlers */
@@ -587,7 +859,7 @@ add_action( 'rest_api_init', function () {
  * POST /register
  *
  * Validation order: honeypot, rate limit, field rules, duplicate phone,
- * then insert. The token is a unique random code, not the row id.
+ * then insert. The token is a unique random code, never the row id.
  */
 if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 	function d7_ganesh_rest_register( WP_REST_Request $request ) {
@@ -644,17 +916,7 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 		// 4. Duplicate phone.
 		$existing = d7_ganesh_find_by_phone( $phone );
 		if ( $existing ) {
-			$error_data = array( 'status' => 409, 'field' => 'phone' );
-
-			if ( ! empty( $config['reveal_token_on_duplicate'] ) ) {
-				$error_data['token'] = d7_ganesh_public_token( $existing['token'] );
-			}
-
-			return new WP_Error(
-				'd7_duplicate_phone',
-				'ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది.',
-				$error_data
-			);
+			return d7_ganesh_duplicate_error( $existing, $config );
 		}
 
 		// 5. Insert with a random unique token (not derived from the row id).
@@ -662,11 +924,13 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 		$id    = 0;
 
 		for ( $attempt = 0; $attempt < 8; $attempt++ ) {
-			$token    = d7_ganesh_build_token();
+			$token = d7_ganesh_build_token();
+
 			$inserted = $wpdb->insert(
 				$table,
 				array(
 					'token'      => $token,
+					'old_token'  => '',
 					'name'       => $name,
 					'phone'      => $phone,
 					'address'    => $address,
@@ -675,7 +939,7 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 					'ip_address' => $ip,
 					'created_at' => current_time( 'mysql' ),
 				),
-				array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' )
+				array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' )
 			);
 
 			if ( false !== $inserted ) {
@@ -683,20 +947,25 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 				break;
 			}
 
-			$existing = d7_ganesh_find_by_phone( $phone );
-			if ( $existing ) {
-				$error_data = array( 'status' => 409, 'field' => 'phone' );
-				if ( ! empty( $config['reveal_token_on_duplicate'] ) ) {
-					$error_data['token'] = d7_ganesh_public_token( $existing['token'] );
-				}
-				return new WP_Error( 'd7_duplicate_phone', 'ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది.', $error_data );
+			/*
+			 * Capture the error BEFORE running any other query. wpdb::query()
+			 * flushes last_error at the start of every call, so reading it after
+			 * a lookup would always return an empty string and a token clash
+			 * would be misreported as a fatal database error.
+			 */
+			$insert_error = (string) $wpdb->last_error;
+
+			$token_clash = ( false !== stripos( $insert_error, 'Duplicate' ) )
+				&& ( false !== stripos( $insert_error, 'token' ) );
+
+			if ( $token_clash ) {
+				continue; // vanishingly rare; just draw another token
 			}
 
-			$last_error = (string) $wpdb->last_error;
-			$token_clash = ( false !== stripos( $last_error, 'Duplicate' ) )
-				&& ( false !== stripos( $last_error, 'token' ) );
-			if ( $token_clash ) {
-				continue;
+			// Anything else: most likely the phone unique index tripped in a race.
+			$existing = d7_ganesh_find_by_phone( $phone );
+			if ( $existing ) {
+				return d7_ganesh_duplicate_error( $existing, $config );
 			}
 
 			return new WP_Error(
@@ -714,7 +983,7 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			);
 		}
 
-		// 6. First 200 row ids get the special idol. This is never encoded in the token.
+		// 6. First N row ids get the special idol. Never encoded in the token.
 		$limit      = max( 0, (int) $config['special_limit'] );
 		$is_special = ( $id <= $limit ) ? 1 : 0;
 		$wpdb->update(
@@ -724,6 +993,8 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			array( '%d' ),
 			array( '%d' )
 		);
+
+		d7_ganesh_rate_limit_hit( $ip );
 
 		$row = d7_ganesh_get_registration( $id );
 
@@ -742,6 +1013,31 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 		$response->set_status( 201 );
 
 		return $response;
+	}
+}
+
+/**
+ * Shared 409 for an already-registered phone number.
+ * Includes the old token too, so someone holding a pre-migration slip sees
+ * both numbers and knows the new one replaces it.
+ */
+if ( ! function_exists( 'd7_ganesh_duplicate_error' ) ) {
+	function d7_ganesh_duplicate_error( $existing, $config ) {
+		$error_data = array( 'status' => 409, 'field' => 'phone' );
+
+		if ( ! empty( $config['reveal_token_on_duplicate'] ) ) {
+			$old = isset( $existing['old_token'] ) ? trim( (string) $existing['old_token'] ) : '';
+
+			$error_data['token']         = d7_ganesh_public_token( $existing['token'] );
+			$error_data['old_token']     = '' === $old ? '' : d7_ganesh_public_token( $old );
+			$error_data['token_display'] = d7_ganesh_display_token( $existing );
+		}
+
+		return new WP_Error(
+			'd7_duplicate_phone',
+			'ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది.',
+			$error_data
+		);
 	}
 }
 
@@ -787,13 +1083,91 @@ if ( ! function_exists( 'd7_ganesh_rest_single' ) ) {
 	}
 }
 
+/**
+ * POST /registrations/<id>/status
+ */
+if ( ! function_exists( 'd7_ganesh_rest_update_status' ) ) {
+	function d7_ganesh_rest_update_status( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$id     = (int) $request->get_param( 'id' );
+		$status = (string) $request->get_param( 'status' );
+		$row    = d7_ganesh_get_registration( $id );
+
+		if ( ! in_array( $status, array( 'pending', 'collected' ), true ) ) {
+			return new WP_Error( 'd7_invalid_status', 'Status must be pending or collected.', array( 'status' => 400 ) );
+		}
+		if ( ! $row ) {
+			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
+		}
+
+		$updated = $wpdb->update(
+			d7_ganesh_table(),
+			array( 'status' => $status ),
+			array( 'id' => $id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		if ( false === $updated ) {
+			return new WP_Error( 'd7_db_error', 'Registration status could not be updated.', array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'data'    => d7_ganesh_format_row( d7_ganesh_get_registration( $id ), true ),
+		) );
+	}
+}
+
+/**
+ * POST /registrations/<id>/delete
+ */
+if ( ! function_exists( 'd7_ganesh_rest_delete' ) ) {
+	function d7_ganesh_rest_delete( WP_REST_Request $request ) {
+		global $wpdb;
+
+		$id  = (int) $request->get_param( 'id' );
+		$row = d7_ganesh_get_registration( $id );
+
+		if ( ! $row ) {
+			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
+		}
+
+		$deleted = $wpdb->delete( d7_ganesh_table(), array( 'id' => $id ), array( '%d' ) );
+		if ( false === $deleted ) {
+			return new WP_Error( 'd7_db_error', 'Registration could not be deleted.', array( 'status' => 500 ) );
+		}
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'deleted' => $id,
+			'token'   => d7_ganesh_display_token( $row ),
+		) );
+	}
+}
+
+/**
+ * GET /export
+ *
+ * CORS headers are sent by hand because this handler ends with exit(), which
+ * runs before rest_pre_serve_request would have attached them.
+ */
+if ( ! function_exists( 'd7_ganesh_rest_export' ) ) {
+	function d7_ganesh_rest_export( WP_REST_Request $request ) {
+		$origin = d7_ganesh_request_origin();
+		if ( $origin ) {
+			d7_ganesh_send_cors_headers( $origin );
+		}
+
+		d7_ganesh_stream_csv();
+		exit;
+	}
+}
+
 
 /* =============================================================================
- * SECTION 3 — ADMIN DASHBOARD
- *
- * Adds a "Ganesh Registrations" menu with counts, search, status filter,
- * pagination, a single-record view, mark-as-collected, delete and CSV export.
- * These hooks only fire inside wp-admin, so they cost nothing on the front end.
+ * SECTION 4 — ADMIN DASHBOARD
  * ========================================================================== */
 
 /* ------------------------------------------------------------------- menu */
@@ -869,8 +1243,12 @@ add_action( 'admin_init', function () {
 	exit;
 } );
 
-/* --------------------------------------------------------------- CSV export */
+/* -------------------------------------------------------------- CSV export */
 
+/**
+ * Neutralise spreadsheet formula injection. A cell starting with = + - @ or a
+ * control character is executed by Excel, and these are free-text fields.
+ */
 if ( ! function_exists( 'd7_ganesh_csv_cell' ) ) {
 	function d7_ganesh_csv_cell( $value ) {
 		$value = (string) $value;
@@ -878,6 +1256,10 @@ if ( ! function_exists( 'd7_ganesh_csv_cell' ) ) {
 	}
 }
 
+/**
+ * Write the CSV to the output buffer. Shared by the wp-admin export button and
+ * the REST export route so the two can never drift apart.
+ */
 if ( ! function_exists( 'd7_ganesh_stream_csv' ) ) {
 	function d7_ganesh_stream_csv() {
 		global $wpdb;
@@ -890,19 +1272,38 @@ if ( ! function_exists( 'd7_ganesh_stream_csv' ) ) {
 		header( 'Content-Disposition: attachment; filename=' . $filename );
 
 		$out = fopen( 'php://output', 'w' );
-		fwrite( $out, "\xEF\xBB\xBF" );
-		fputcsv( $out, array( 'Token', 'Name', 'Phone', 'Address', 'Status', 'Gift', 'Registered at' ) );
 
-		foreach ( $rows as $row ) {
-			fputcsv( $out, array(
-				d7_ganesh_csv_cell( d7_ganesh_public_token( $row['token'] ) ),
-				d7_ganesh_csv_cell( $row['name'] ),
-				d7_ganesh_csv_cell( $row['phone'] ),
-				d7_ganesh_csv_cell( $row['address'] ),
-				d7_ganesh_csv_cell( $row['status'] ),
-				d7_ganesh_csv_cell( d7_ganesh_row_is_special( $row ) ? 'special' : 'standard' ),
-				d7_ganesh_csv_cell( $row['created_at'] ),
-			) );
+		// BOM so Excel opens the Telugu names correctly.
+		fwrite( $out, "\xEF\xBB\xBF" );
+
+		fputcsv( $out, array(
+			'Token',        // combined display, e.g. D7-RAMESH-X7K4 (Old: D7-RAMESH-0009)
+			'New token',    // plain, for VLOOKUP
+			'Old token',    // plain, blank for post-migration registrations
+			'Name',
+			'Phone',
+			'Address',
+			'Status',
+			'Gift',
+			'Registered at',
+		) );
+
+		if ( $rows ) {
+			foreach ( $rows as $row ) {
+				$old = isset( $row['old_token'] ) ? trim( (string) $row['old_token'] ) : '';
+
+				fputcsv( $out, array(
+					d7_ganesh_csv_cell( d7_ganesh_display_token( $row ) ),
+					d7_ganesh_csv_cell( d7_ganesh_public_token( $row['token'] ) ),
+					d7_ganesh_csv_cell( '' === $old ? '' : d7_ganesh_public_token( $old ) ),
+					d7_ganesh_csv_cell( $row['name'] ),
+					d7_ganesh_csv_cell( $row['phone'] ),
+					d7_ganesh_csv_cell( $row['address'] ),
+					d7_ganesh_csv_cell( $row['status'] ),
+					d7_ganesh_csv_cell( d7_ganesh_row_is_special( $row ) ? 'special' : 'standard' ),
+					d7_ganesh_csv_cell( $row['created_at'] ),
+				) );
+			}
 		}
 
 		fclose( $out );
@@ -973,15 +1374,26 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 				</div>
 			<?php endif; ?>
 
+			<?php if ( ! empty( $counts['reissued'] ) ) : ?>
+				<div class="notice notice-info">
+					<p>
+						<strong><?php echo esc_html( number_format_i18n( $counts['reissued'] ) ); ?></strong>
+						early registration(s) were given a new random token. Their original
+						number is shown in brackets and is fully searchable, so a devotee
+						arriving with an old printed slip can still be found by that number.
+					</p>
+				</div>
+			<?php endif; ?>
+
 			<!-- summary cards -->
 			<div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 22px;">
 				<?php
 				$cards = array(
-					'Total registrations' => $counts['total'],
-					'Registered today'    => $counts['today'],
+					'Total registrations'      => $counts['total'],
+					'Registered today'         => $counts['today'],
 					'Special idol (first 200)' => isset( $counts['special'] ) ? $counts['special'] : 0,
-					'Idol collected'      => $counts['collected'],
-					'Still pending'       => $counts['pending'],
+					'Idol collected'           => $counts['collected'],
+					'Still pending'            => $counts['pending'],
 				);
 				foreach ( $cards as $label => $value ) : ?>
 					<div style="flex:1 1 170px;background:#fff;border:1px solid #dcdcde;border-left:4px solid #d63638;border-radius:6px;padding:14px 16px;">
@@ -999,7 +1411,8 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 					<label class="screen-reader-text" for="d7-search">Search registrations</label>
 					<input type="search" id="d7-search" name="s"
 					       value="<?php echo esc_attr( $search ); ?>"
-					       placeholder="Name, phone or token">
+					       placeholder="Name, phone, token or old token"
+					       style="min-width:260px;">
 
 					<select name="status">
 						<option value="">All statuses</option>
@@ -1023,14 +1436,14 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 			<table class="wp-list-table widefat fixed striped">
 				<thead>
 					<tr>
-						<th style="width:140px;">Token</th>
-						<th style="width:180px;">Name</th>
-						<th style="width:130px;">Phone</th>
+						<th style="width:230px;">Token</th>
+						<th style="width:170px;">Name</th>
+						<th style="width:125px;">Phone</th>
 						<th>Address</th>
-						<th style="width:160px;">Registered at</th>
-						<th style="width:110px;">Status</th>
-						<th style="width:130px;">Gift</th>
-						<th style="width:190px;">Actions</th>
+						<th style="width:155px;">Registered at</th>
+						<th style="width:100px;">Status</th>
+						<th style="width:120px;">Gift</th>
+						<th style="width:185px;">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -1045,6 +1458,7 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 				<?php else : ?>
 					<?php foreach ( $result['rows'] as $row ) :
 						$id       = (int) $row['id'];
+						$old      = isset( $row['old_token'] ) ? trim( (string) $row['old_token'] ) : '';
 						$base_url = add_query_arg(
 							array_filter( array(
 								'page'   => 'd7-ganesh-registrations',
@@ -1056,7 +1470,15 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 						);
 						?>
 						<tr>
-							<td><strong><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></strong></td>
+							<td>
+								<strong><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></strong>
+								<?php if ( '' !== $old ) : ?>
+									<br>
+									<span style="color:#646970;font-size:12px;">
+										(Old: <?php echo esc_html( d7_ganesh_public_token( $old ) ); ?>)
+									</span>
+								<?php endif; ?>
+							</td>
 							<td><?php echo esc_html( $row['name'] ); ?></td>
 							<td>
 								<a href="tel:<?php echo esc_attr( $row['phone'] ); ?>">
@@ -1143,9 +1565,11 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 				. '</p></div>';
 			return;
 		}
+
+		$old = isset( $row['old_token'] ) ? trim( (string) $row['old_token'] ) : '';
 		?>
 		<div class="wrap">
-			<h1 class="wp-heading-inline"><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></h1>
+			<h1 class="wp-heading-inline"><?php echo esc_html( d7_ganesh_display_token( $row ) ); ?></h1>
 			<a class="page-title-action"
 			   href="<?php echo esc_url( admin_url( 'admin.php?page=d7-ganesh-registrations' ) ); ?>">Back to all</a>
 			<hr class="wp-header-end">
@@ -1173,6 +1597,18 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 							<th scope="row">Token number</th>
 							<td><strong><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></strong></td>
 						</tr>
+						<?php if ( '' !== $old ) : ?>
+						<tr>
+							<th scope="row">Original token</th>
+							<td>
+								<code><?php echo esc_html( d7_ganesh_public_token( $old ) ); ?></code>
+								<p class="description">
+									This is the number printed on the devotee's original slip.
+									Accept either number at the counter.
+								</p>
+							</td>
+						</tr>
+						<?php endif; ?>
 						<tr>
 							<th scope="row">Gift</th>
 							<td>
@@ -1219,12 +1655,12 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 
 
 /* =============================================================================
- * SECTION 4 — CORS
+ * SECTION 5 — CORS
  * ========================================================================== */
 
 if ( ! function_exists( 'd7_ganesh_allowed_origins' ) ) {
 	function d7_ganesh_allowed_origins() {
-		$config = d7_ganesh_config();
+		$config  = d7_ganesh_config();
 		$allowed = isset( $config['allowed_origins'] ) ? (array) $config['allowed_origins'] : array();
 		return array_values( array_filter( array_map( 'untrailingslashit', $allowed ) ) );
 	}
@@ -1250,7 +1686,7 @@ if ( ! function_exists( 'd7_ganesh_send_cors_headers' ) ) {
 	}
 }
 
-// Let WordPress core include the optional admin header in its preflight list.
+// Let WordPress core include the admin header in its preflight list.
 add_filter( 'rest_allowed_cors_headers', function ( $headers ) {
 	$headers[] = 'X-D7-Admin-Key';
 	return array_values( array_unique( $headers ) );
@@ -1292,108 +1728,3 @@ add_filter( 'rest_pre_serve_request', function ( $served, $result, $request ) {
 
 	return $served;
 }, 20, 3 );
-
-
-/* =============================================================================
- * ADMIN ACTIONS
- * ========================================================================== */
-
-// These write routes use POST with form-encoded bodies to avoid CORS preflight.
-add_action( 'rest_api_init', function () {
-	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/status', array(
-		'methods'             => WP_REST_Server::CREATABLE,
-		'callback'            => 'd7_ganesh_rest_update_status',
-		'permission_callback' => 'd7_ganesh_admin_permission',
-		'args'                => array(
-			'id'     => array( 'sanitize_callback' => 'absint' ),
-			'status' => array(
-				'required'          => true,
-				'sanitize_callback' => 'sanitize_key',
-			),
-		),
-	) );
-
-	register_rest_route( 'd7-ganesh/v1', '/registrations/(?P<id>\d+)/delete', array(
-		'methods'             => WP_REST_Server::CREATABLE,
-		'callback'            => 'd7_ganesh_rest_delete',
-		'permission_callback' => 'd7_ganesh_admin_permission',
-		'args'                => array(
-			'id' => array( 'sanitize_callback' => 'absint' ),
-		),
-	) );
-
-	register_rest_route( 'd7-ganesh/v1', '/export', array(
-		'methods'             => WP_REST_Server::READABLE,
-		'callback'            => 'd7_ganesh_rest_export',
-		'permission_callback' => 'd7_ganesh_admin_permission',
-	) );
-} );
-
-if ( ! function_exists( 'd7_ganesh_rest_update_status' ) ) {
-	function d7_ganesh_rest_update_status( WP_REST_Request $request ) {
-		global $wpdb;
-
-		$id     = (int) $request->get_param( 'id' );
-		$status = (string) $request->get_param( 'status' );
-		$row    = d7_ganesh_get_registration( $id );
-
-		if ( ! in_array( $status, array( 'pending', 'collected' ), true ) ) {
-			return new WP_Error( 'd7_invalid_status', 'Status must be pending or collected.', array( 'status' => 400 ) );
-		}
-		if ( ! $row ) {
-			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
-		}
-
-		$updated = $wpdb->update(
-			d7_ganesh_table(),
-			array( 'status' => $status ),
-			array( 'id' => $id ),
-			array( '%s' ),
-			array( '%d' )
-		);
-
-		if ( false === $updated ) {
-			return new WP_Error( 'd7_db_error', 'Registration status could not be updated.', array( 'status' => 500 ) );
-		}
-
-		return rest_ensure_response( array(
-			'success' => true,
-			'data'    => d7_ganesh_format_row( d7_ganesh_get_registration( $id ), true ),
-		) );
-	}
-}
-
-if ( ! function_exists( 'd7_ganesh_rest_delete' ) ) {
-	function d7_ganesh_rest_delete( WP_REST_Request $request ) {
-		global $wpdb;
-
-		$id  = (int) $request->get_param( 'id' );
-		$row = d7_ganesh_get_registration( $id );
-		if ( ! $row ) {
-			return new WP_Error( 'd7_not_found', 'Registration not found.', array( 'status' => 404 ) );
-		}
-
-		$deleted = $wpdb->delete( d7_ganesh_table(), array( 'id' => $id ), array( '%d' ) );
-		if ( false === $deleted ) {
-			return new WP_Error( 'd7_db_error', 'Registration could not be deleted.', array( 'status' => 500 ) );
-		}
-
-		return rest_ensure_response( array(
-			'success' => true,
-			'deleted' => $id,
-			'token'   => d7_ganesh_public_token( $row['token'] ),
-		) );
-	}
-}
-
-if ( ! function_exists( 'd7_ganesh_rest_export' ) ) {
-	function d7_ganesh_rest_export( WP_REST_Request $request ) {
-		$origin = d7_ganesh_request_origin();
-		if ( $origin ) {
-			d7_ganesh_send_cors_headers( $origin );
-		}
-
-		d7_ganesh_stream_csv();
-		exit;
-	}
-}
