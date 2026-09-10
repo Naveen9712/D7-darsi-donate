@@ -1,5 +1,5 @@
 /* ==========================================================================
-   D7 News Telugu — వినాయక చవితి ఉచిత గణేష్ విగ్రహాల పంపిణీ
+  D7 Groups of Ramesh Dongari — వినాయక చవితి ఉచిత గణేష్ విగ్రహాల పంపిణీ
    style.css
    Design: temple torana arch + prasadam-slip token, mobile first.
    ========================================================================== */
@@ -414,6 +414,8 @@
     font-weight: 700;
     color: var(--maroon);
   }
+  .slip__contact { margin-top: 2px; font-size: var(--t-xs); color: var(--maroon-2); }
+  .slip__contact a { color: inherit; text-decoration: none; }
   .slip__event { font-size: var(--t-xs); color: var(--maroon-2); }
   
   .slip__tokenbox {
@@ -537,10 +539,10 @@
   .section-heading > p:last-child { margin-top: 7px; color: var(--maroon-2); font-size: var(--t-sm); }
 
   .carousel { position: relative; padding-bottom: 44px; }
-  .carousel__viewport { overflow: hidden; border-radius: var(--radius); box-shadow: var(--shadow-lift); background: #251912; touch-action: pan-y; }
-  .carousel__track { display: flex; transform: translateX(0); transition: transform 480ms cubic-bezier(.2, .8, .3, 1); will-change: transform; }
+  .carousel__viewport { overflow: hidden; border-radius: var(--radius); box-shadow: var(--shadow-lift); background: #251912; touch-action: pan-y; transition: height 360ms cubic-bezier(.2, .8, .3, 1); }
+  .carousel__track { display: flex; align-items: flex-start; transform: translateX(0); transition: transform 480ms cubic-bezier(.2, .8, .3, 1); will-change: transform; }
   .carousel__slide { flex: 0 0 100%; min-width: 0; margin: 0; }
-  .carousel__slide img { display: block; width: auto; max-width: 100%; height: auto; max-height: 640px; margin-inline: auto; object-fit: contain; background: #251912; }
+  .carousel__slide img { display: block; width: auto; max-width: 100%; height: auto; margin-inline: auto; object-fit: contain; background: #251912; }
   .carousel__slide figcaption { min-height: 48px; padding: 10px 14px 12px; color: #FFF9EE; background: #213E3B; font-size: var(--t-xs); line-height: 1.45; }
   .carousel--poster .carousel__slide img { object-fit: contain; background: #F4EFE5; }
   .carousel--poster .carousel__slide figcaption { background: var(--maroon); }

@@ -216,6 +216,11 @@
       '<td><span class="status"></span></td>' +
       '<td><div class="row-actions"></div></td>';
 
+    var labels = ["Token", "Name", "Phone", "Address", "Registered", "Status", "Actions"];
+    Array.prototype.forEach.call(tr.children, function (cell, index) {
+      cell.setAttribute("data-label", labels[index]);
+    });
+
     tr.children[0].firstChild.textContent = row.token || "-";
     tr.children[1].textContent = row.name || "-";
     tr.children[2].textContent = row.phone || "-";

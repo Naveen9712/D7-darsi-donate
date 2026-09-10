@@ -1,5 +1,5 @@
 /* ==========================================================================
-   D7 News Telugu — ఉచిత గణేష్ విగ్రహాల నమోదు
+  D7 Groups of Ramesh Dongari — ఉచిత గణేష్ విగ్రహాల నమోదు
    script.js — front-end validation + WordPress REST API client.
 
    WordPress is now the source of truth. The token number is issued by the
@@ -48,6 +48,10 @@
     var regCount  = document.getElementById("regCount");
   
     var SUBMIT_LABEL = submitBtn.textContent;
+
+    function publicToken(token) {
+      return String(token || "").replace(/^D7-GANESH-/, "D7-RAMESH-");
+    }
   
     /* ---------------------------- API helper ------------------------------ */
   
@@ -233,7 +237,7 @@
       })
         .then(function (json) {
           var data = json.data;
-          tokenInput.value = data.token;
+          tokenInput.value = publicToken(data.token);
           saveReceipt(data);
           showResult(data);
           loadCount();
@@ -283,7 +287,7 @@
     /* --------------------------- Result screen ---------------------------- */
   
     function showResult(data, skipScroll) {
-      slipToken.textContent   = data.token;
+      slipToken.textContent   = publicToken(data.token);
       slipName.textContent    = data.name;
       slipPhone.textContent   = "+91 " + data.phone;
       slipAddress.textContent = data.address;
@@ -344,6 +348,7 @@
 
       Array.prototype.forEach.call(carousels, function (carousel) {
         var track = carousel.querySelector(".carousel__track");
+        var viewport = carousel.querySelector(".carousel__viewport");
         var slides = carousel.querySelectorAll(".carousel__slide");
         var dots = carousel.querySelector(".carousel__dots");
         var previous = carousel.querySelector(".carousel__button--prev");
@@ -351,6 +356,12 @@
         var current = 0;
         var startX = 0;
         var autoplayTimer;
+
+        function updateViewportHeight() {
+          var activeSlide = slides[current];
+          if (!activeSlide) return;
+          viewport.style.height = activeSlide.offsetHeight + "px";
+        }
 
         function goTo(index) {
           current = (index + slides.length) % slides.length;
@@ -362,6 +373,7 @@
           Array.prototype.forEach.call(dots.children, function (dot, dotIndex) {
             dot.setAttribute("aria-selected", dotIndex === current ? "true" : "false");
           });
+          updateViewportHeight();
         }
 
         Array.prototype.forEach.call(slides, function (_, slideIndex) {
@@ -373,6 +385,12 @@
           dot.addEventListener("click", function () { goTo(slideIndex); });
           dots.appendChild(dot);
         });
+
+        Array.prototype.forEach.call(slides, function (slide) {
+          var image = slide.querySelector("img");
+          if (image) image.addEventListener("load", updateViewportHeight);
+        });
+        window.addEventListener("resize", updateViewportHeight);
 
         previous.addEventListener("click", function () { goTo(current - 1); });
         next.addEventListener("click", function () { goTo(current + 1); });

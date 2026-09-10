@@ -31,8 +31,8 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 	function d7_ganesh_config() {
 		return array(
 
-			// Token prefix. Result looks like D7-GANESH-0001.
-			'token_prefix' => 'D7-GANESH-',
+			// Token prefix. Result looks like D7-RAMESH-0001.
+			'token_prefix' => 'D7-RAMESH-',
 
 			// Max submissions allowed per IP address per hour.
 			'rate_limit' => 5,
@@ -73,7 +73,7 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 }
 
 if ( ! defined( 'D7_GANESH_DB_VERSION' ) ) {
-	define( 'D7_GANESH_DB_VERSION', '1.0.0' );
+	define( 'D7_GANESH_DB_VERSION', '1.1.0' );
 }
 
 
@@ -130,6 +130,16 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
 
+		// Migrate stored tokens without changing their numeric sequence.
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET token = REPLACE(token, %s, %s) WHERE token LIKE %s",
+				'D7-GANESH-',
+				'D7-RAMESH-',
+				'D7-GANESH-%'
+			)
+		);
+
 		update_option( 'd7_ganesh_db_version', D7_GANESH_DB_VERSION );
 	}
 }
@@ -150,12 +160,33 @@ add_action( 'init', function () {
  * construction — no counter option, no race condition, no reuse after deletion.
  *
  * @param int $id Row id.
- * @return string e.g. D7-GANESH-0001
+ * @return string e.g. D7-RAMESH-0001
  */
 if ( ! function_exists( 'd7_ganesh_build_token' ) ) {
 	function d7_ganesh_build_token( $id ) {
 		$config = d7_ganesh_config();
 		return $config['token_prefix'] . str_pad( (int) $id, 4, '0', STR_PAD_LEFT );
+	}
+}
+
+/**
+ * Return the current public token format while preserving its numeric suffix.
+ * This keeps legacy rows created with the old prefix consistent in API
+ * responses without changing the database id or registrant name.
+ *
+ * @param string $token Stored token value.
+ * @return string Current public token value.
+ */
+if ( ! function_exists( 'd7_ganesh_public_token' ) ) {
+	function d7_ganesh_public_token( $token ) {
+		$config = d7_ganesh_config();
+		$token  = (string) $token;
+
+		if ( 0 === strpos( $token, 'D7-GANESH-' ) ) {
+			return $config['token_prefix'] . substr( $token, strlen( 'D7-GANESH-' ) );
+		}
+
+		return $token;
 	}
 }
 
@@ -359,7 +390,7 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 	function d7_ganesh_format_row( $row, $include_private = false ) {
 		$out = array(
 			'id'              => (int) $row['id'],
-			'token'           => $row['token'],
+			'token'           => d7_ganesh_public_token( $row['token'] ),
 			'name'            => $row['name'],
 			'phone'           => $row['phone'],
 			'address'         => $row['address'],
@@ -561,7 +592,7 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			$error_data = array( 'status' => 409, 'field' => 'phone' );
 
 			if ( ! empty( $config['reveal_token_on_duplicate'] ) ) {
-				$error_data['token'] = $existing['token'];
+				$error_data['token'] = d7_ganesh_public_token( $existing['token'] );
 			}
 
 			return new WP_Error(
@@ -593,7 +624,7 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			if ( $existing ) {
 				$error_data = array( 'status' => 409, 'field' => 'phone' );
 				if ( ! empty( $config['reveal_token_on_duplicate'] ) ) {
-					$error_data['token'] = $existing['token'];
+					$error_data['token'] = d7_ganesh_public_token( $existing['token'] );
 				}
 				return new WP_Error( 'd7_duplicate_phone', 'ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది.', $error_data );
 			}

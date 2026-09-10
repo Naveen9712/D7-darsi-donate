@@ -117,6 +117,18 @@ td:last-child { max-width: none; }
 .button--danger:hover { background: #fbe2dd; }
 
 @media (max-width: 720px) {
-  .row-actions { flex-direction: column; align-items: stretch; }
-  .row-action { width: 100%; }
+  .filters { display: grid; grid-template-columns: 1fr; }
+  .filters input, .filters select, .filters button { width: 100%; min-width: 0; }
+  .table-wrap { overflow: visible; border: 0; }
+  table, tbody { display: block; min-width: 0; }
+  thead { display: none; }
+  tbody tr { display: block; margin-bottom: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; box-shadow: 0 8px 22px rgba(44, 35, 24, .06); }
+  tbody tr:last-child { margin-bottom: 0; }
+  tbody tr td { display: grid; grid-template-columns: minmax(82px, 30%) minmax(0, 1fr); gap: 12px; max-width: none; padding: 9px 0; border-bottom: 1px solid #eee8dc; overflow-wrap: anywhere; }
+  tbody tr td::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+  tbody tr td:last-child { border-bottom: 0; }
+  tbody tr td.empty { display: block; padding: 18px 0; text-align: center; }
+  tbody tr td.empty::before { content: none; }
+  .row-actions { flex-wrap: wrap; flex-direction: row; align-items: center; gap: 7px; }
+  .row-action { width: auto; min-width: 0; }
 }
