@@ -42,16 +42,15 @@
     try { sessionStorage.removeItem(KEY_STORAGE); } catch (error) {}
   }
 
-  /**
-   * Build an API URL with the admin key attached as a query parameter.
-   * The key is NOT sent as a custom header: a custom header would trigger a
-   * CORS preflight, and simple requests avoid that entirely.
-   */
   function apiUrl(path) {
+    return new URL(API_BASE + path, window.location.href);
+  }
+
+  function authHeaders(extra) {
+    var headers = extra || {};
     var key = getKey();
-    var url = new URL(API_BASE + path, window.location.href);
-    if (key) url.searchParams.set("admin_key", key);
-    return url;
+    if (key) headers["X-D7-Admin-Key"] = key;
+    return headers;
   }
 
   /* ------------------------------ transport ----------------------------- */
@@ -70,20 +69,17 @@
   function request(path) {
     var key = getKey();
     return fetch(apiUrl(path).toString(), {
-      credentials: key ? "omit" : "include"
+      credentials: key ? "omit" : "include",
+      headers: authHeaders()
     }).then(handleResponse);
   }
 
-  /**
-   * POST with a form-encoded body. Form encoding keeps this a "simple
-   * request" — application/json would force a preflight.
-   */
   function post(path, body) {
     var key = getKey();
     return fetch(apiUrl(path).toString(), {
       method: "POST",
       credentials: key ? "omit" : "include",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: authHeaders({ "Content-Type": "application/x-www-form-urlencoded" }),
       body: new URLSearchParams(body || {}).toString()
     }).then(handleResponse);
   }
@@ -329,9 +325,34 @@
     loadRecords().catch(handleDashboardError);
   });
 
-  // The CSV download is a plain browser navigation, so CORS never applies.
   exportBtn.addEventListener("click", function () {
-    window.open(apiUrl("/export").toString(), "_blank");
+    var key = getKey();
+    fetch(apiUrl("/export").toString(), {
+      credentials: key ? "omit" : "include",
+      headers: authHeaders()
+    }).then(function (response) {
+      if (!response.ok) {
+        var error = new Error("Export failed");
+        error.status = response.status;
+        throw error;
+      }
+      var disposition = response.headers.get("Content-Disposition") || "";
+      var filename = "d7-ganesh-registrations.csv";
+      var match = disposition.match(/filename=([^;]+)/i);
+      if (match) filename = match[1].replace(/["']/g, "").trim();
+      return response.blob().then(function (blob) {
+        return { blob: blob, filename: filename };
+      });
+    }).then(function (file) {
+      var url = URL.createObjectURL(file.blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = file.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }).catch(handleDashboardError);
   });
 
   refreshBtn.addEventListener("click", function () { loadDashboard(); });

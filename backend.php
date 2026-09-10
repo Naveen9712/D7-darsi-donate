@@ -31,8 +31,12 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 	function d7_ganesh_config() {
 		return array(
 
-			// Token prefix. Result looks like D7-RAMESH-0001.
+			// Token prefix. Result looks like D7-RAMESH-X7K4 (random, not sequential).
 			'token_prefix' => 'D7-RAMESH-',
+
+			// First N registrations receive the special Ganesh idol + Puja Samagri + gift.
+			// This is stored on the row and shown only in admin — never encoded in the token.
+			'special_limit' => 200,
 
 			// Max submissions allowed per IP address per hour.
 			'rate_limit' => 5,
@@ -47,10 +51,6 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 				'https://pncreators.com',
 				'https://www.pncreators.com',
 				'https://d7darsidonate.onrender.com',
-				'http://localhost:5500',
-				'http://127.0.0.1:5500',
-				'http://localhost:8080',
-				'http://127.0.0.1:8080',
 			),
 
 			/**
@@ -63,17 +63,18 @@ if ( ! function_exists( 'd7_ganesh_config' ) ) {
 			'reveal_token_on_duplicate' => true,
 
 			/**
-			 * Optional key for the standalone /admin/ page on the static site.
-			 * Generate a long random value and keep it out of public frontend code.
-			 * Leave empty to use the normal WordPress administrator session only.
+			 * Optional key for the standalone /admin/ page.
+			 * Send only as the X-D7-Admin-Key header — never as a query string.
+			 * Rotate this value if it has ever been committed or logged.
+			 * Leave empty to use a WordPress administrator session only.
 			 */
-			'admin_api_key' => 'Upsc@365',
+			'admin_api_key' => 'f92f8f9f0d5494570f364ebdda99ba2772fc7bef22d3d86618c091f6750415f7',
 		);
 	}
 }
 
 if ( ! defined( 'D7_GANESH_DB_VERSION' ) ) {
-	define( 'D7_GANESH_DB_VERSION', '1.1.0' );
+	define( 'D7_GANESH_DB_VERSION', '1.3.0' );
 }
 
 
@@ -118,19 +119,21 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 			phone varchar(15) NOT NULL DEFAULT '',
 			address text NOT NULL,
 			status varchar(20) NOT NULL DEFAULT 'pending',
+			is_special tinyint(1) unsigned NOT NULL DEFAULT 0,
 			ip_address varchar(45) NOT NULL DEFAULT '',
-			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY  (id),
 			UNIQUE KEY phone (phone),
-			KEY token (token),
+			UNIQUE KEY token (token),
 			KEY status (status),
+			KEY is_special (is_special),
 			KEY created_at (created_at)
 		) {$collate};";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql );
 
-		// Migrate stored tokens without changing their numeric sequence.
+		// Migrate stored tokens without changing already-issued values.
 		$wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET token = REPLACE(token, %s, %s) WHERE token LIKE %s",
@@ -139,6 +142,20 @@ if ( ! function_exists( 'd7_ganesh_install_table' ) ) {
 				'D7-GANESH-%'
 			)
 		);
+
+		$config = d7_ganesh_config();
+		$limit  = max( 0, (int) $config['special_limit'] );
+
+		// One-time backfill only. Later version bumps must not rewrite is_special.
+		if ( ! get_option( 'd7_ganesh_special_backfill_done' ) ) {
+			$wpdb->query(
+				$wpdb->prepare(
+					"UPDATE {$table} SET is_special = CASE WHEN id <= %d THEN 1 ELSE 0 END",
+					$limit
+				)
+			);
+			update_option( 'd7_ganesh_special_backfill_done', '1' );
+		}
 
 		update_option( 'd7_ganesh_db_version', D7_GANESH_DB_VERSION );
 	}
@@ -154,18 +171,56 @@ add_action( 'init', function () {
 } );
 
 /**
- * Build a token from the row's auto-increment id.
+ * Random token suffix. Letters and digits, omitting 0/O/1/I/L so a token
+ * like D7-RAMESH-X7K4 is easy to read aloud at the collection counter.
  *
- * Deriving the token from the primary key makes it sequential and unique by
- * construction — no counter option, no race condition, no reuse after deletion.
+ * @param int $length
+ * @return string
+ */
+if ( ! function_exists( 'd7_ganesh_random_suffix' ) ) {
+	function d7_ganesh_random_suffix( $length = 4 ) {
+		$alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+		$max      = strlen( $alphabet ) - 1;
+		$out      = '';
+
+		for ( $i = 0; $i < $length; $i++ ) {
+			$out .= $alphabet[ random_int( 0, $max ) ];
+		}
+
+		return $out;
+	}
+}
+
+/**
+ * Issue a unique public token that does not encode the registration count.
  *
- * @param int $id Row id.
- * @return string e.g. D7-RAMESH-0001
+ * @param int $id Unused; kept so older call sites stay valid.
+ * @return string e.g. D7-RAMESH-X7K4
  */
 if ( ! function_exists( 'd7_ganesh_build_token' ) ) {
-	function d7_ganesh_build_token( $id ) {
+	function d7_ganesh_build_token( $id = 0 ) {
 		$config = d7_ganesh_config();
-		return $config['token_prefix'] . str_pad( (int) $id, 4, '0', STR_PAD_LEFT );
+		return $config['token_prefix'] . d7_ganesh_random_suffix( 4 );
+	}
+}
+
+/**
+ * Whether this row is one of the first N special-idol registrations.
+ * Uses the stored flag when present; otherwise falls back to the row id.
+ *
+ * @param array $row
+ * @return bool
+ */
+if ( ! function_exists( 'd7_ganesh_row_is_special' ) ) {
+	function d7_ganesh_row_is_special( $row ) {
+		$config = d7_ganesh_config();
+		$limit  = max( 0, (int) $config['special_limit'] );
+
+		if ( isset( $row['is_special'] ) && '' !== $row['is_special'] && null !== $row['is_special'] ) {
+			return 1 === (int) $row['is_special'];
+		}
+
+		return (int) $row['id'] <= $limit;
 	}
 }
 
@@ -248,28 +303,30 @@ if ( ! function_exists( 'd7_ganesh_query_registrations' ) ) {
 		$page     = max( 1, (int) $args['page'] );
 		$offset   = ( $page - 1 ) * $per_page;
 
-		$where = 'WHERE 1=1';
+		$where_sql  = 'WHERE 1=1';
+		$where_args = array();
 
-		// One search box covers name, phone and token.
 		if ( '' !== trim( $args['search'] ) ) {
-			$like  = '%' . $wpdb->esc_like( trim( $args['search'] ) ) . '%';
-			$where .= $wpdb->prepare(
-				' AND ( name LIKE %s OR phone LIKE %s OR token LIKE %s )',
-				$like, $like, $like
-			);
+			$like         = '%' . $wpdb->esc_like( trim( $args['search'] ) ) . '%';
+			$where_sql   .= ' AND ( name LIKE %s OR phone LIKE %s OR token LIKE %s )';
+			array_push( $where_args, $like, $like, $like );
 		}
 
 		if ( in_array( $args['status'], array( 'pending', 'collected' ), true ) ) {
-			$where .= $wpdb->prepare( ' AND status = %s', $args['status'] );
+			$where_sql   .= ' AND status = %s';
+			$where_args[] = $args['status'];
 		}
 
-		$total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} {$where}" );
+		$count_sql = "SELECT COUNT(*) FROM {$table} {$where_sql}";
+		$total     = (int) ( $where_args
+			? $wpdb->get_var( $wpdb->prepare( $count_sql, $where_args ) )
+			: $wpdb->get_var( $count_sql )
+		);
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$table} {$where} ORDER BY id DESC LIMIT %d OFFSET %d",
-				$per_page,
-				$offset
+				"SELECT * FROM {$table} {$where_sql} ORDER BY id DESC LIMIT %d OFFSET %d",
+				array_merge( $where_args, array( $per_page, $offset ) )
 			),
 			ARRAY_A
 		);
@@ -299,6 +356,7 @@ if ( ! function_exists( 'd7_ganesh_get_counts' ) ) {
 			'today'     => (int) $wpdb->get_var(
 				$wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE DATE(created_at) = %s", $today )
 			),
+			'special'   => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE is_special = 1" ),
 		);
 	}
 }
@@ -389,7 +447,6 @@ if ( ! function_exists( 'd7_ganesh_rate_limit_ok' ) ) {
 if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 	function d7_ganesh_format_row( $row, $include_private = false ) {
 		$out = array(
-			'id'              => (int) $row['id'],
 			'token'           => d7_ganesh_public_token( $row['token'] ),
 			'name'            => $row['name'],
 			'phone'           => $row['phone'],
@@ -400,7 +457,11 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 		);
 
 		if ( $include_private ) {
-			$out['ip_address'] = $row['ip_address'];
+			$is_special = d7_ganesh_row_is_special( $row );
+			$out['id']         = (int) $row['id'];
+			$out['ip_address']  = $row['ip_address'];
+			$out['is_special'] = $is_special;
+			$out['gift']       = $is_special ? 'special' : 'standard';
 		}
 
 		return $out;
@@ -415,18 +476,12 @@ if ( ! function_exists( 'd7_ganesh_format_row' ) ) {
 	if ( ! function_exists( 'd7_ganesh_admin_permission' ) ) {
 		function d7_ganesh_admin_permission( $request = null ) {
 			$config = d7_ganesh_config();
-			$provided_key = '';
 
-			if ( ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
+			if ( ! empty( $config['admin_api_key'] ) && ! empty( $_SERVER['HTTP_X_D7_ADMIN_KEY'] ) ) {
 				$provided_key = (string) wp_unslash( $_SERVER['HTTP_X_D7_ADMIN_KEY'] );
-			} elseif ( $request instanceof WP_REST_Request && $request->get_param( 'admin_key' ) ) {
-				$provided_key = (string) $request->get_param( 'admin_key' );
-			} elseif ( ! empty( $_GET['admin_key'] ) ) {
-				$provided_key = (string) wp_unslash( $_GET['admin_key'] );
-			}
-
-			if ( ! empty( $config['admin_api_key'] ) && '' !== $provided_key && hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
-				return true;
+				if ( hash_equals( (string) $config['admin_api_key'], $provided_key ) ) {
+					return true;
+				}
 			}
 
 		if ( ! is_user_logged_in() ) {
@@ -532,7 +587,7 @@ add_action( 'rest_api_init', function () {
  * POST /register
  *
  * Validation order: honeypot, rate limit, field rules, duplicate phone,
- * then insert. The token is written after insert, from the row id.
+ * then insert. The token is a unique random code, not the row id.
  */
 if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 	function d7_ganesh_rest_register( WP_REST_Request $request ) {
@@ -602,24 +657,32 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			);
 		}
 
-		// 5. Insert.
-		$table    = d7_ganesh_table();
-		$inserted = $wpdb->insert(
-			$table,
-			array(
-				'token'      => '',
-				'name'       => $name,
-				'phone'      => $phone,
-				'address'    => $address,
-				'status'     => 'pending',
-				'ip_address' => $ip,
-				'created_at' => current_time( 'mysql' ),
-			),
-			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
-		);
+		// 5. Insert with a random unique token (not derived from the row id).
+		$table = d7_ganesh_table();
+		$id    = 0;
 
-		if ( false === $inserted ) {
-			// The UNIQUE index catches a race that slipped past step 4.
+		for ( $attempt = 0; $attempt < 8; $attempt++ ) {
+			$token    = d7_ganesh_build_token();
+			$inserted = $wpdb->insert(
+				$table,
+				array(
+					'token'      => $token,
+					'name'       => $name,
+					'phone'      => $phone,
+					'address'    => $address,
+					'status'     => 'pending',
+					'is_special' => 0,
+					'ip_address' => $ip,
+					'created_at' => current_time( 'mysql' ),
+				),
+				array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' )
+			);
+
+			if ( false !== $inserted ) {
+				$id = (int) $wpdb->insert_id;
+				break;
+			}
+
 			$existing = d7_ganesh_find_by_phone( $phone );
 			if ( $existing ) {
 				$error_data = array( 'status' => 409, 'field' => 'phone' );
@@ -628,6 +691,14 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 				}
 				return new WP_Error( 'd7_duplicate_phone', 'ఈ ఫోన్ నంబర్ ఇప్పటికే నమోదైంది.', $error_data );
 			}
+
+			$last_error = (string) $wpdb->last_error;
+			$token_clash = ( false !== stripos( $last_error, 'Duplicate' ) )
+				&& ( false !== stripos( $last_error, 'token' ) );
+			if ( $token_clash ) {
+				continue;
+			}
+
 			return new WP_Error(
 				'd7_db_error',
 				'నమోదు సేవ్ కాలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.',
@@ -635,10 +706,24 @@ if ( ! function_exists( 'd7_ganesh_rest_register' ) ) {
 			);
 		}
 
-		// 6. Token from the row id — sequential, unique, never reused.
-		$id    = (int) $wpdb->insert_id;
-		$token = d7_ganesh_build_token( $id );
-		$wpdb->update( $table, array( 'token' => $token ), array( 'id' => $id ), array( '%s' ), array( '%d' ) );
+		if ( ! $id ) {
+			return new WP_Error(
+				'd7_db_error',
+				'నమోదు సేవ్ కాలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.',
+				array( 'status' => 500 )
+			);
+		}
+
+		// 6. First 200 row ids get the special idol. This is never encoded in the token.
+		$limit      = max( 0, (int) $config['special_limit'] );
+		$is_special = ( $id <= $limit ) ? 1 : 0;
+		$wpdb->update(
+			$table,
+			array( 'is_special' => $is_special ),
+			array( 'id' => $id ),
+			array( '%d' ),
+			array( '%d' )
+		);
 
 		$row = d7_ganesh_get_registration( $id );
 
@@ -786,41 +871,50 @@ add_action( 'admin_init', function () {
 
 /* --------------------------------------------------------------- CSV export */
 
+if ( ! function_exists( 'd7_ganesh_csv_cell' ) ) {
+	function d7_ganesh_csv_cell( $value ) {
+		$value = (string) $value;
+		return preg_match( '/^[=+\-@\t\r]/', $value ) ? "'" . $value : $value;
+	}
+}
+
+if ( ! function_exists( 'd7_ganesh_stream_csv' ) ) {
+	function d7_ganesh_stream_csv() {
+		global $wpdb;
+
+		$rows     = $wpdb->get_results( 'SELECT * FROM ' . d7_ganesh_table() . ' ORDER BY id ASC', ARRAY_A );
+		$filename = 'd7-ganesh-registrations-' . current_time( 'Y-m-d-His' ) . '.csv';
+
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=' . $filename );
+
+		$out = fopen( 'php://output', 'w' );
+		fwrite( $out, "\xEF\xBB\xBF" );
+		fputcsv( $out, array( 'Token', 'Name', 'Phone', 'Address', 'Status', 'Gift', 'Registered at' ) );
+
+		foreach ( $rows as $row ) {
+			fputcsv( $out, array(
+				d7_ganesh_csv_cell( d7_ganesh_public_token( $row['token'] ) ),
+				d7_ganesh_csv_cell( $row['name'] ),
+				d7_ganesh_csv_cell( $row['phone'] ),
+				d7_ganesh_csv_cell( $row['address'] ),
+				d7_ganesh_csv_cell( $row['status'] ),
+				d7_ganesh_csv_cell( d7_ganesh_row_is_special( $row ) ? 'special' : 'standard' ),
+				d7_ganesh_csv_cell( $row['created_at'] ),
+			) );
+		}
+
+		fclose( $out );
+	}
+}
+
 add_action( 'admin_post_d7_ganesh_export', function () {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		wp_die( 'You are not allowed to export registrations.' );
 	}
 	check_admin_referer( 'd7_ganesh_export' );
-
-	global $wpdb;
-	$table = d7_ganesh_table();
-	$rows  = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY id ASC", ARRAY_A );
-
-	$filename = 'd7-ganesh-registrations-' . current_time( 'Y-m-d-His' ) . '.csv';
-
-	nocache_headers();
-	header( 'Content-Type: text/csv; charset=utf-8' );
-	header( 'Content-Disposition: attachment; filename=' . $filename );
-
-	$out = fopen( 'php://output', 'w' );
-
-	// BOM so Excel opens the Telugu names correctly.
-	fwrite( $out, "\xEF\xBB\xBF" );
-
-	fputcsv( $out, array( 'Token', 'Name', 'Phone', 'Address', 'Status', 'Registered at' ) );
-
-	foreach ( $rows as $row ) {
-		fputcsv( $out, array(
-			$row['token'],
-			$row['name'],
-			$row['phone'],
-			$row['address'],
-			$row['status'],
-			$row['created_at'],
-		) );
-	}
-
-	fclose( $out );
+	d7_ganesh_stream_csv();
 	exit;
 } );
 
@@ -885,6 +979,7 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 				$cards = array(
 					'Total registrations' => $counts['total'],
 					'Registered today'    => $counts['today'],
+					'Special idol (first 200)' => isset( $counts['special'] ) ? $counts['special'] : 0,
 					'Idol collected'      => $counts['collected'],
 					'Still pending'       => $counts['pending'],
 				);
@@ -934,13 +1029,14 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 						<th>Address</th>
 						<th style="width:160px;">Registered at</th>
 						<th style="width:110px;">Status</th>
+						<th style="width:130px;">Gift</th>
 						<th style="width:190px;">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
 				<?php if ( empty( $result['rows'] ) ) : ?>
 					<tr>
-						<td colspan="7">
+						<td colspan="8">
 							<?php echo $search || $status
 								? 'No registration matches this search.'
 								: 'No registrations yet. They will appear here as soon as the form is used.'; ?>
@@ -960,7 +1056,7 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 						);
 						?>
 						<tr>
-							<td><strong><?php echo esc_html( $row['token'] ); ?></strong></td>
+							<td><strong><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></strong></td>
 							<td><?php echo esc_html( $row['name'] ); ?></td>
 							<td>
 								<a href="tel:<?php echo esc_attr( $row['phone'] ); ?>">
@@ -974,6 +1070,13 @@ if ( ! function_exists( 'd7_ganesh_render_admin_page' ) ) {
 									<span style="color:#00794a;font-weight:600;">Collected</span>
 								<?php else : ?>
 									<span style="color:#996800;font-weight:600;">Pending</span>
+								<?php endif; ?>
+							</td>
+							<td>
+								<?php if ( d7_ganesh_row_is_special( $row ) ) : ?>
+									<span style="color:#7a4a12;font-weight:600;">Special idol</span>
+								<?php else : ?>
+									<span>Standard idol</span>
 								<?php endif; ?>
 							</td>
 							<td>
@@ -1042,7 +1145,7 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 		}
 		?>
 		<div class="wrap">
-			<h1 class="wp-heading-inline"><?php echo esc_html( $row['token'] ); ?></h1>
+			<h1 class="wp-heading-inline"><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></h1>
 			<a class="page-title-action"
 			   href="<?php echo esc_url( admin_url( 'admin.php?page=d7-ganesh-registrations' ) ); ?>">Back to all</a>
 			<hr class="wp-header-end">
@@ -1068,7 +1171,15 @@ if ( ! function_exists( 'd7_ganesh_render_single_view' ) ) {
 						</tr>
 						<tr>
 							<th scope="row">Token number</th>
-							<td><strong><?php echo esc_html( $row['token'] ); ?></strong></td>
+							<td><strong><?php echo esc_html( d7_ganesh_public_token( $row['token'] ) ); ?></strong></td>
+						</tr>
+						<tr>
+							<th scope="row">Gift</th>
+							<td>
+								<?php echo d7_ganesh_row_is_special( $row )
+									? 'Special idol + Puja Samagri + Special Gift (first 200)'
+									: 'Standard Ganesh idol'; ?>
+							</td>
 						</tr>
 						<tr>
 							<th scope="row">Registered at</th>
@@ -1133,7 +1244,7 @@ if ( ! function_exists( 'd7_ganesh_send_cors_headers' ) ) {
 		header( 'Access-Control-Allow-Credentials: true' );
 		header( 'Access-Control-Allow-Methods: GET, POST, OPTIONS' );
 		header( 'Access-Control-Allow-Headers: Content-Type, X-WP-Nonce, X-D7-Admin-Key' );
-		header( 'Access-Control-Expose-Headers: X-WP-Total, X-WP-TotalPages' );
+		header( 'Access-Control-Expose-Headers: X-WP-Total, X-WP-TotalPages, Content-Disposition' );
 		header( 'Access-Control-Max-Age: 600' );
 		header( 'Vary: Origin', false );
 	}
@@ -1152,7 +1263,7 @@ add_action( 'init', function () {
 	}
 
 	$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
-	if ( false === strpos( $uri, 'd7-ganesh' ) ) {
+	if ( false === strpos( $uri, '/wp-json/d7-ganesh/' ) ) {
 		return;
 	}
 
@@ -1270,38 +1381,19 @@ if ( ! function_exists( 'd7_ganesh_rest_delete' ) ) {
 		return rest_ensure_response( array(
 			'success' => true,
 			'deleted' => $id,
-			'token'   => $row['token'],
+			'token'   => d7_ganesh_public_token( $row['token'] ),
 		) );
 	}
 }
 
 if ( ! function_exists( 'd7_ganesh_rest_export' ) ) {
 	function d7_ganesh_rest_export( WP_REST_Request $request ) {
-		global $wpdb;
-
-		$rows     = $wpdb->get_results( 'SELECT * FROM ' . d7_ganesh_table() . ' ORDER BY id ASC', ARRAY_A );
-		$filename = 'd7-ganesh-registrations-' . current_time( 'Y-m-d-His' ) . '.csv';
-
-		nocache_headers();
-		header( 'Content-Type: text/csv; charset=utf-8' );
-		header( 'Content-Disposition: attachment; filename=' . $filename );
-
-		$out = fopen( 'php://output', 'w' );
-		fwrite( $out, "\xEF\xBB\xBF" );
-		fputcsv( $out, array( 'Token', 'Name', 'Phone', 'Address', 'Status', 'Registered at' ) );
-
-		foreach ( $rows as $row ) {
-			fputcsv( $out, array(
-				$row['token'],
-				$row['name'],
-				$row['phone'],
-				$row['address'],
-				$row['status'],
-				$row['created_at'],
-			) );
+		$origin = d7_ganesh_request_origin();
+		if ( $origin ) {
+			d7_ganesh_send_cors_headers( $origin );
 		}
 
-		fclose( $out );
+		d7_ganesh_stream_csv();
 		exit;
 	}
 }
